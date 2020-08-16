@@ -34,7 +34,8 @@ int yaksuri_cudai_md_alloc(yaksi_type_s * type)
         goto fn_exit;
     } else {
         cerr =
-            cudaMallocManaged((void **) &cuda->md, sizeof(yaksuri_cudai_md_s), cudaMemAttachGlobal);
+            yaksuri_cudai_global.malloc_managed((void **) &cuda->md, sizeof(yaksuri_cudai_md_s),
+                                                cudaMemAttachGlobal);
         YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
     }
 
@@ -63,9 +64,10 @@ int yaksuri_cudai_md_alloc(yaksi_type_s * type)
             cuda->md->u.blkhindx.count = type->u.blkhindx.count;
             cuda->md->u.blkhindx.blocklength = type->u.blkhindx.blocklength;
 
-            cerr = cudaMallocManaged((void **) &cuda->md->u.blkhindx.array_of_displs,
-                                     type->u.blkhindx.count * sizeof(intptr_t),
-                                     cudaMemAttachGlobal);
+            cerr =
+                yaksuri_cudai_global.malloc_managed((void **) &cuda->md->u.blkhindx.array_of_displs,
+                                                    type->u.blkhindx.count * sizeof(intptr_t),
+                                                    cudaMemAttachGlobal);
             YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
 
             memcpy(cuda->md->u.blkhindx.array_of_displs, type->u.blkhindx.array_of_displs,
@@ -80,16 +82,20 @@ int yaksuri_cudai_md_alloc(yaksi_type_s * type)
         case YAKSI_TYPE_KIND__HINDEXED:
             cuda->md->u.hindexed.count = type->u.hindexed.count;
 
-            cerr = cudaMallocManaged((void **) &cuda->md->u.hindexed.array_of_displs,
-                                     type->u.hindexed.count * sizeof(intptr_t),
-                                     cudaMemAttachGlobal);
+            cerr =
+                yaksuri_cudai_global.malloc_managed((void **) &cuda->md->u.hindexed.array_of_displs,
+                                                    type->u.hindexed.count * sizeof(intptr_t),
+                                                    cudaMemAttachGlobal);
             YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
 
             memcpy(cuda->md->u.hindexed.array_of_displs, type->u.hindexed.array_of_displs,
                    type->u.hindexed.count * sizeof(intptr_t));
 
-            cerr = cudaMallocManaged((void **) &cuda->md->u.hindexed.array_of_blocklengths,
-                                     type->u.hindexed.count * sizeof(int), cudaMemAttachGlobal);
+            cerr =
+                yaksuri_cudai_global.malloc_managed((void **) &cuda->md->u.
+                                                    hindexed.array_of_blocklengths,
+                                                    type->u.hindexed.count * sizeof(int),
+                                                    cudaMemAttachGlobal);
             YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
 
             memcpy(cuda->md->u.hindexed.array_of_blocklengths,

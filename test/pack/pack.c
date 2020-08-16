@@ -68,9 +68,9 @@ static int device_stride = 0;
 static void init_devices(void)
 {
 #ifdef HAVE_CUDA
-    cudaGetDeviceCount(&ndevices);
+    yaksuri_cudai_global.get_device_count(&ndevices);
     assert(ndevices != -1);
-    cudaSetDevice(device_id);
+    yaksuri_cudai_global.set_device(device_id);
 #endif
 }
 
@@ -82,14 +82,14 @@ static void alloc_mem(size_t size, mem_type_e type, void **hostbuf, void **devic
             *hostbuf = *devicebuf;
 #ifdef HAVE_CUDA
     } else if (type == MEM_TYPE__REGISTERED_HOST) {
-        cudaMallocHost(devicebuf, size);
+        yaksuri_cudai_global.malloc_host(devicebuf, size);
         if (hostbuf)
             *hostbuf = *devicebuf;
     } else if (type == MEM_TYPE__DEVICE) {
-        cudaSetDevice(device_id);
-        cudaMalloc(devicebuf, size);
+        yaksuri_cudai_global.set_device(device_id);
+        yaksuri_cudai_global.malloc(devicebuf, size);
         if (hostbuf)
-            cudaMallocHost(hostbuf, size);
+            yaksuri_cudai_global.malloc_host(hostbuf, size);
         device_id += device_stride;
         device_id %= ndevices;
 #endif
@@ -105,11 +105,11 @@ static void free_mem(mem_type_e type, void *hostbuf, void *devicebuf)
         free(hostbuf);
 #ifdef HAVE_CUDA
     } else if (type == MEM_TYPE__REGISTERED_HOST) {
-        cudaFreeHost(devicebuf);
+        yaksuri_cudai_global.free_host(devicebuf);
     } else if (type == MEM_TYPE__DEVICE) {
-        cudaFree(devicebuf);
+        yaksuri_cudai_global.free(devicebuf);
         if (hostbuf) {
-            cudaFreeHost(hostbuf);
+            yaksuri_cudai_global.free_host(hostbuf);
         }
 #endif
     }

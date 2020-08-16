@@ -14,7 +14,7 @@ int yaksuri_cudai_get_ptr_attr(const void *buf, yaksur_ptr_attr_s * ptrattr)
     int rc = YAKSA_SUCCESS;
 
     struct cudaPointerAttributes attr;
-    cudaError_t cerr = cudaPointerGetAttributes(&attr, buf);
+    cudaError_t cerr = yaksuri_cudai_global.pointer_get_attributes(&attr, buf);
     if (cerr == cudaSuccess) {
         if (attr.type == cudaMemoryTypeUnregistered) {
             ptrattr->type = YAKSUR_PTR_TYPE__UNREGISTERED_HOST;

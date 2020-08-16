@@ -41,6 +41,38 @@ typedef struct {
     int ndevices;
     cudaStream_t *stream;
     bool **p2p;
+
+    /* pointers to CUDA functions */
+     cudaError_t(*launch_kernel) (const void *func, dim3 gridDim, dim3 blockDim, void **args,
+                                  size_t sharedMem, cudaStream_t stream);
+
+     cudaError_t(*malloc_host) (void **ptr, size_t size);
+     cudaError_t(*malloc) (void **devPtr, size_t size);
+     cudaError_t(*malloc_managed) (void **devPtr, size_t size, unsigned int flags);
+     cudaError_t(*free_host) (void *ptr);
+     cudaError_t(*free) (void *devPtr);
+
+     cudaError_t(*get_device_count) (int *count);
+     cudaError_t(*get_device) (int *device);
+     cudaError_t(*set_device) (int device);
+
+     cudaError_t(*device_can_access_peer) (int *canAccessPeer, int device, int peerDevice);
+     cudaError_t(*device_enable_peer_access) (int peerDevice, unsigned int flags);
+
+     cudaError_t(*event_create) (cudaEvent_t * event);
+     cudaError_t(*event_record) (cudaEvent_t event, cudaStream_t stream);
+     cudaError_t(*event_query) (cudaEvent_t event);
+     cudaError_t(*event_synchronize) (cudaEvent_t event);
+     cudaError_t(*event_destroy) (cudaEvent_t event);
+
+     cudaError_t(*stream_create) (cudaStream_t * pStream);
+     cudaError_t(*stream_create_with_flags) (cudaStream_t * pStream, unsigned int flags);
+     cudaError_t(*stream_destroy) (cudaStream_t stream);
+     cudaError_t(*stream_wait_event) (cudaStream_t stream, cudaEvent_t event, unsigned int flags);
+
+     cudaError_t(*pointer_get_attributes) (cudaPointerAttributes * attributes, const void *ptr);
+     cudaError_t(*memcpy_async) (void *dst, const void *src, size_t count, cudaMemcpyKind kind,
+                                 cudaStream_t stream);
 } yaksuri_cudai_global_s;
 extern yaksuri_cudai_global_s yaksuri_cudai_global;
 

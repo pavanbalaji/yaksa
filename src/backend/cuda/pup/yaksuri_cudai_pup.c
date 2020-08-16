@@ -75,21 +75,21 @@ int yaksuri_cudai_ipack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_
 
     struct cudaPointerAttributes outattr, inattr;
 
-    cerr = cudaPointerGetAttributes(&inattr, (char *) inbuf + type->true_lb);
+    cerr = yaksuri_cudai_global.pointer_get_attributes(&inattr, (char *) inbuf + type->true_lb);
     YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
 
-    cerr = cudaPointerGetAttributes(&outattr, outbuf);
+    cerr = yaksuri_cudai_global.pointer_get_attributes(&outattr, outbuf);
     YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
 
     int cur_device;
-    cerr = cudaGetDevice(&cur_device);
+    cerr = yaksuri_cudai_global.get_device(&cur_device);
     YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
 
-    cerr = cudaSetDevice(target);
+    cerr = yaksuri_cudai_global.set_device(target);
     YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
 
     if (*event == NULL) {
-        cerr = cudaEventCreate((cudaEvent_t *) event);
+        cerr = yaksuri_cudai_global.event_create((cudaEvent_t *) event);
         YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
     }
 
@@ -97,8 +97,9 @@ int yaksuri_cudai_ipack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_
     if (type->is_contig) {
         /* cuda performance is optimized when we synchronize on the
          * source buffer's GPU */
-        cerr = cudaMemcpyAsync(outbuf, inbuf, count * type->size, cudaMemcpyDefault,
-                               yaksuri_cudai_global.stream[target]);
+        cerr =
+            yaksuri_cudai_global.memcpy_async(outbuf, inbuf, count * type->size, cudaMemcpyDefault,
+                                              yaksuri_cudai_global.stream[target]);
         YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
     } else if (type->size / type->num_contig >= iov_pack_threshold) {
         struct iovec *iov;
@@ -113,8 +114,9 @@ int yaksuri_cudai_ipack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_
 
             char *dbuf = (char *) outbuf;
             for (uintptr_t i = 0; i < actual_iov_len; i++) {
-                cudaMemcpyAsync(dbuf, iov[i].iov_base, iov[i].iov_len, cudaMemcpyDefault,
-                                yaksuri_cudai_global.stream[target]);
+                yaksuri_cudai_global.memcpy_async(dbuf, iov[i].iov_base, iov[i].iov_len,
+                                                  cudaMemcpyDefault,
+                                                  yaksuri_cudai_global.stream[target]);
                 dbuf += iov[i].iov_len;
             }
 
@@ -131,8 +133,9 @@ int yaksuri_cudai_ipack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_
                 assert(actual_iov_len == type->num_contig);
 
                 for (uintptr_t j = 0; j < actual_iov_len; j++) {
-                    cudaMemcpyAsync(dbuf, iov[j].iov_base, iov[j].iov_len, cudaMemcpyDefault,
-                                    yaksuri_cudai_global.stream[target]);
+                    yaksuri_cudai_global.memcpy_async(dbuf, iov[j].iov_base, iov[j].iov_len,
+                                                      cudaMemcpyDefault,
+                                                      yaksuri_cudai_global.stream[target]);
                     dbuf += iov[j].iov_len;
                 }
 
@@ -166,8 +169,10 @@ int yaksuri_cudai_ipack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_
             assert(inattr.type == cudaMemoryTypeDevice);
             cuda_type->pack(inbuf, gpu_tmpbuf, count, cuda_type->md, n_threads, n_blocks_x,
                             n_blocks_y, n_blocks_z, target);
-            cerr = cudaMemcpyAsync(outbuf, gpu_tmpbuf, count * type->size, cudaMemcpyDefault,
-                                   yaksuri_cudai_global.stream[target]);
+            cerr =
+                yaksuri_cudai_global.memcpy_async(outbuf, gpu_tmpbuf, count * type->size,
+                                                  cudaMemcpyDefault,
+                                                  yaksuri_cudai_global.stream[target]);
             YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
         } else {
             rc = YAKSA_ERR__INTERNAL;
@@ -175,10 +180,12 @@ int yaksuri_cudai_ipack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_
         }
     }
 
-    cerr = cudaEventRecord((cudaEvent_t) * event, yaksuri_cudai_global.stream[target]);
+    cerr =
+        yaksuri_cudai_global.event_record((cudaEvent_t) * event,
+                                          yaksuri_cudai_global.stream[target]);
     YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
 
-    cerr = cudaSetDevice(cur_device);
+    cerr = yaksuri_cudai_global.set_device(cur_device);
     YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
 
   fn_exit:
@@ -202,21 +209,21 @@ int yaksuri_cudai_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaks
 
     struct cudaPointerAttributes outattr, inattr;
 
-    cerr = cudaPointerGetAttributes(&inattr, inbuf);
+    cerr = yaksuri_cudai_global.pointer_get_attributes(&inattr, inbuf);
     YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
 
-    cerr = cudaPointerGetAttributes(&outattr, (char *) outbuf + type->true_lb);
+    cerr = yaksuri_cudai_global.pointer_get_attributes(&outattr, (char *) outbuf + type->true_lb);
     YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
 
     int cur_device;
-    cerr = cudaGetDevice(&cur_device);
+    cerr = yaksuri_cudai_global.get_device(&cur_device);
     YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
 
-    cerr = cudaSetDevice(target);
+    cerr = yaksuri_cudai_global.set_device(target);
     YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
 
     if (*event == NULL) {
-        cerr = cudaEventCreate((cudaEvent_t *) event);
+        cerr = yaksuri_cudai_global.event_create((cudaEvent_t *) event);
         YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
     }
 
@@ -224,8 +231,9 @@ int yaksuri_cudai_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaks
     if (type->is_contig) {
         /* cuda performance is optimized when we synchronize on the
          * source buffer's GPU */
-        cerr = cudaMemcpyAsync(outbuf, inbuf, count * type->size, cudaMemcpyDefault,
-                               yaksuri_cudai_global.stream[target]);
+        cerr =
+            yaksuri_cudai_global.memcpy_async(outbuf, inbuf, count * type->size, cudaMemcpyDefault,
+                                              yaksuri_cudai_global.stream[target]);
         YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
     } else if (type->size / type->num_contig >= iov_unpack_threshold) {
         struct iovec *iov;
@@ -240,8 +248,9 @@ int yaksuri_cudai_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaks
 
             const char *sbuf = (const char *) inbuf;
             for (uintptr_t i = 0; i < actual_iov_len; i++) {
-                cudaMemcpyAsync(iov[i].iov_base, sbuf, iov[i].iov_len, cudaMemcpyDefault,
-                                yaksuri_cudai_global.stream[target]);
+                yaksuri_cudai_global.memcpy_async(iov[i].iov_base, sbuf, iov[i].iov_len,
+                                                  cudaMemcpyDefault,
+                                                  yaksuri_cudai_global.stream[target]);
                 sbuf += iov[i].iov_len;
             }
 
@@ -258,8 +267,9 @@ int yaksuri_cudai_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaks
                 assert(actual_iov_len == type->num_contig);
 
                 for (uintptr_t j = 0; j < actual_iov_len; j++) {
-                    cudaMemcpyAsync(iov[j].iov_base, sbuf, iov[j].iov_len, cudaMemcpyDefault,
-                                    yaksuri_cudai_global.stream[target]);
+                    yaksuri_cudai_global.memcpy_async(iov[j].iov_base, sbuf, iov[j].iov_len,
+                                                      cudaMemcpyDefault,
+                                                      yaksuri_cudai_global.stream[target]);
                     sbuf += iov[j].iov_len;
                 }
 
@@ -292,8 +302,10 @@ int yaksuri_cudai_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaks
                    (inattr.type == cudaMemoryTypeHost)) {
             assert(outattr.type == cudaMemoryTypeDevice);
 
-            cerr = cudaMemcpyAsync(gpu_tmpbuf, inbuf, count * type->size, cudaMemcpyDefault,
-                                   yaksuri_cudai_global.stream[target]);
+            cerr =
+                yaksuri_cudai_global.memcpy_async(gpu_tmpbuf, inbuf, count * type->size,
+                                                  cudaMemcpyDefault,
+                                                  yaksuri_cudai_global.stream[target]);
             YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
 
             cuda_type->unpack(gpu_tmpbuf, outbuf, count, cuda_type->md, n_threads, n_blocks_x,
@@ -304,10 +316,12 @@ int yaksuri_cudai_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaks
         }
     }
 
-    cerr = cudaEventRecord((cudaEvent_t) * event, yaksuri_cudai_global.stream[target]);
+    cerr =
+        yaksuri_cudai_global.event_record((cudaEvent_t) * event,
+                                          yaksuri_cudai_global.stream[target]);
     YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
 
-    cerr = cudaSetDevice(cur_device);
+    cerr = yaksuri_cudai_global.set_device(cur_device);
     YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
 
   fn_exit:
