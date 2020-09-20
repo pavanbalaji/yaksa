@@ -16,10 +16,15 @@ int main()
     int rc = YAKSA_SUCCESS;
     yaksa_type_t vector, vector_vector;
     uintptr_t actual;
+    yaksa_context_t context;
+    yaksa_type_t yaksa_int;
 
-    yaksa_init(NULL);
+    yaksa_context_create(NULL, &context);
 
-    rc = yaksa_type_create_vector(3, 2, 3, YAKSA_TYPE__INT, NULL, &vector);
+    rc = yaksa_type_get_predefined(context, YAKSA_TYPE__INT, &yaksa_int);
+    assert(rc == YAKSA_SUCCESS);
+
+    rc = yaksa_type_create_vector(3, 2, 3, yaksa_int, NULL, &vector);
     assert(rc == YAKSA_SUCCESS);
 
     rc = yaksa_type_create_vector(5, 1, 10, vector, NULL, &vector_vector);
@@ -75,7 +80,7 @@ int main()
     yaksa_type_free(vector_vector);
     yaksa_type_free(vector);
 
-    yaksa_finalize();
+    yaksa_context_free(context);
 
     return 0;
 }

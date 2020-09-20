@@ -450,7 +450,6 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    yaksa_init(NULL);
     init_devices();
 
     dtp = (DTP_pool_s *) malloc(num_threads * sizeof(DTP_pool_s));
@@ -474,8 +473,6 @@ int main(int argc, char **argv)
         assert(rc == DTP_SUCCESS);
     }
     free(dtp);
-
-    yaksa_finalize();
 
     return 0;
 }

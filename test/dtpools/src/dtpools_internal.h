@@ -115,6 +115,7 @@ typedef struct {
     int rand_idx;
     int rand_list[DTPI_RAND_LIST_SIZE];
 
+    yaksa_context_t context;
     char base_type_str[DTPI_MAX_BASE_TYPE_STR_LEN + 1];
     uintptr_t base_type_count;
     uintptr_t base_type_extent;

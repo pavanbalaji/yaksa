@@ -13,122 +13,128 @@
 
 int DTPI_func_nesting = -1;
 
-static yaksa_type_t name_to_type(const char *name)
+static yaksa_type_t name_to_type(DTPI_pool_s * dtpi, const char *name)
 {
-    if (!strcmp(name, "_Bool") || !strcmp(name, "bool"))
-        return YAKSA_TYPE___BOOL;
-    else if (!strcmp(name, "char"))
-        return YAKSA_TYPE__CHAR;
-    else if (!strcmp(name, "signed_char"))
-        return YAKSA_TYPE__SIGNED_CHAR;
-    else if (!strcmp(name, "unsigned_char"))
-        return YAKSA_TYPE__UNSIGNED_CHAR;
-    else if (!strcmp(name, "wchar"))
-        return YAKSA_TYPE__WCHAR_T;
-    else if (!strcmp(name, "int"))
-        return YAKSA_TYPE__INT;
-    else if (!strcmp(name, "unsigned"))
-        return YAKSA_TYPE__UNSIGNED;
-    else if (!strcmp(name, "short"))
-        return YAKSA_TYPE__SHORT;
-    else if (!strcmp(name, "unsigned_short"))
-        return YAKSA_TYPE__UNSIGNED_SHORT;
-    else if (!strcmp(name, "long"))
-        return YAKSA_TYPE__LONG;
-    else if (!strcmp(name, "unsigned_long"))
-        return YAKSA_TYPE__UNSIGNED_LONG;
-    else if (!strcmp(name, "long_long"))
-        return YAKSA_TYPE__LONG_LONG;
-    else if (!strcmp(name, "unsigned_long_long"))
-        return YAKSA_TYPE__UNSIGNED_LONG_LONG;
-    else if (!strcmp(name, "int8_t"))
-        return YAKSA_TYPE__INT8_T;
-    else if (!strcmp(name, "int16_t"))
-        return YAKSA_TYPE__INT16_T;
-    else if (!strcmp(name, "int32_t"))
-        return YAKSA_TYPE__INT32_T;
-    else if (!strcmp(name, "int64_t"))
-        return YAKSA_TYPE__INT64_T;
-    else if (!strcmp(name, "uint8_t"))
-        return YAKSA_TYPE__UINT8_T;
-    else if (!strcmp(name, "uint16_t"))
-        return YAKSA_TYPE__UINT16_T;
-    else if (!strcmp(name, "uint32_t"))
-        return YAKSA_TYPE__UINT32_T;
-    else if (!strcmp(name, "uint64_t"))
-        return YAKSA_TYPE__UINT64_T;
-    else if (!strcmp(name, "int_fast8_t"))
-        return YAKSA_TYPE__INT_FAST8_T;
-    else if (!strcmp(name, "int_fast16_t"))
-        return YAKSA_TYPE__INT_FAST16_T;
-    else if (!strcmp(name, "int_fast32_t"))
-        return YAKSA_TYPE__INT_FAST32_T;
-    else if (!strcmp(name, "int_fast64_t"))
-        return YAKSA_TYPE__INT_FAST64_T;
-    else if (!strcmp(name, "uint_fast8_t"))
-        return YAKSA_TYPE__UINT_FAST8_T;
-    else if (!strcmp(name, "uint_fast16_t"))
-        return YAKSA_TYPE__UINT_FAST16_T;
-    else if (!strcmp(name, "uint_fast32_t"))
-        return YAKSA_TYPE__UINT_FAST32_T;
-    else if (!strcmp(name, "uint_fast64_t"))
-        return YAKSA_TYPE__UINT_FAST64_T;
-    else if (!strcmp(name, "int_least8_t"))
-        return YAKSA_TYPE__INT_LEAST8_T;
-    else if (!strcmp(name, "int_least16_t"))
-        return YAKSA_TYPE__INT_LEAST16_T;
-    else if (!strcmp(name, "int_least32_t"))
-        return YAKSA_TYPE__INT_LEAST32_T;
-    else if (!strcmp(name, "int_least64_t"))
-        return YAKSA_TYPE__INT_LEAST64_T;
-    else if (!strcmp(name, "uint_least8_t"))
-        return YAKSA_TYPE__UINT_LEAST8_T;
-    else if (!strcmp(name, "uint_least16_t"))
-        return YAKSA_TYPE__UINT_LEAST16_T;
-    else if (!strcmp(name, "uint_least32_t"))
-        return YAKSA_TYPE__UINT_LEAST32_T;
-    else if (!strcmp(name, "uint_least64_t"))
-        return YAKSA_TYPE__UINT_LEAST64_T;
-    else if (!strcmp(name, "intmax_t"))
-        return YAKSA_TYPE__INTMAX_T;
-    else if (!strcmp(name, "uintmax_t"))
-        return YAKSA_TYPE__UINTMAX_T;
-    else if (!strcmp(name, "size_t"))
-        return YAKSA_TYPE__SIZE_T;
-    else if (!strcmp(name, "float"))
-        return YAKSA_TYPE__FLOAT;
-    else if (!strcmp(name, "double"))
-        return YAKSA_TYPE__DOUBLE;
-    else if (!strcmp(name, "long_double"))
-        return YAKSA_TYPE__LONG_DOUBLE;
-    else if (!strcmp(name, "intptr_t"))
-        return YAKSA_TYPE__INTPTR_T;
-    else if (!strcmp(name, "uintptr_t"))
-        return YAKSA_TYPE__UINTPTR_T;
-    else if (!strcmp(name, "ptrdiff_t"))
-        return YAKSA_TYPE__PTRDIFF_T;
-    else if (!strcmp(name, "c_complex"))
-        return YAKSA_TYPE__C_COMPLEX;
-    else if (!strcmp(name, "c_double_complex"))
-        return YAKSA_TYPE__C_DOUBLE_COMPLEX;
-    else if (!strcmp(name, "c_long_double_complex"))
-        return YAKSA_TYPE__C_LONG_DOUBLE_COMPLEX;
-    else if (!strcmp(name, "float_int"))
-        return YAKSA_TYPE__FLOAT_INT;
-    else if (!strcmp(name, "double_int"))
-        return YAKSA_TYPE__DOUBLE_INT;
-    else if (!strcmp(name, "long_int"))
-        return YAKSA_TYPE__LONG_INT;
-    else if (!strcmp(name, "2int"))
-        return YAKSA_TYPE__2INT;
-    else if (!strcmp(name, "short_int"))
-        return YAKSA_TYPE__SHORT_INT;
-    else if (!strcmp(name, "long_double_int"))
-        return YAKSA_TYPE__LONG_DOUBLE_INT;
-    else if (!strcmp(name, "byte"))
-        return YAKSA_TYPE__BYTE;
+    yaksa_type_t type;
+    int rc = YAKSA_SUCCESS;
 
-    return YAKSA_TYPE__NULL;
+    if (!strcmp(name, "_Bool") || !strcmp(name, "bool"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE___BOOL, &type);
+    else if (!strcmp(name, "char"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__CHAR, &type);
+    else if (!strcmp(name, "signed_char"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__SIGNED_CHAR, &type);
+    else if (!strcmp(name, "unsigned_char"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UNSIGNED_CHAR, &type);
+    else if (!strcmp(name, "wchar"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__WCHAR_T, &type);
+    else if (!strcmp(name, "int"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__INT, &type);
+    else if (!strcmp(name, "unsigned"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UNSIGNED, &type);
+    else if (!strcmp(name, "short"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__SHORT, &type);
+    else if (!strcmp(name, "unsigned_short"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UNSIGNED_SHORT, &type);
+    else if (!strcmp(name, "long"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__LONG, &type);
+    else if (!strcmp(name, "unsigned_long"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UNSIGNED_LONG, &type);
+    else if (!strcmp(name, "long_long"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__LONG_LONG, &type);
+    else if (!strcmp(name, "unsigned_long_long"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UNSIGNED_LONG_LONG, &type);
+    else if (!strcmp(name, "int8_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__INT8_T, &type);
+    else if (!strcmp(name, "int16_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__INT16_T, &type);
+    else if (!strcmp(name, "int32_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__INT32_T, &type);
+    else if (!strcmp(name, "int64_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__INT64_T, &type);
+    else if (!strcmp(name, "uint8_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UINT8_T, &type);
+    else if (!strcmp(name, "uint16_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UINT16_T, &type);
+    else if (!strcmp(name, "uint32_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UINT32_T, &type);
+    else if (!strcmp(name, "uint64_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UINT64_T, &type);
+    else if (!strcmp(name, "int_fast8_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__INT_FAST8_T, &type);
+    else if (!strcmp(name, "int_fast16_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__INT_FAST16_T, &type);
+    else if (!strcmp(name, "int_fast32_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__INT_FAST32_T, &type);
+    else if (!strcmp(name, "int_fast64_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__INT_FAST64_T, &type);
+    else if (!strcmp(name, "uint_fast8_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UINT_FAST8_T, &type);
+    else if (!strcmp(name, "uint_fast16_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UINT_FAST16_T, &type);
+    else if (!strcmp(name, "uint_fast32_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UINT_FAST32_T, &type);
+    else if (!strcmp(name, "uint_fast64_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UINT_FAST64_T, &type);
+    else if (!strcmp(name, "int_least8_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__INT_LEAST8_T, &type);
+    else if (!strcmp(name, "int_least16_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__INT_LEAST16_T, &type);
+    else if (!strcmp(name, "int_least32_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__INT_LEAST32_T, &type);
+    else if (!strcmp(name, "int_least64_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__INT_LEAST64_T, &type);
+    else if (!strcmp(name, "uint_least8_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UINT_LEAST8_T, &type);
+    else if (!strcmp(name, "uint_least16_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UINT_LEAST16_T, &type);
+    else if (!strcmp(name, "uint_least32_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UINT_LEAST32_T, &type);
+    else if (!strcmp(name, "uint_least64_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UINT_LEAST64_T, &type);
+    else if (!strcmp(name, "intmax_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__INTMAX_T, &type);
+    else if (!strcmp(name, "uintmax_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UINTMAX_T, &type);
+    else if (!strcmp(name, "size_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__SIZE_T, &type);
+    else if (!strcmp(name, "float"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__FLOAT, &type);
+    else if (!strcmp(name, "double"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__DOUBLE, &type);
+    else if (!strcmp(name, "long_double"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__LONG_DOUBLE, &type);
+    else if (!strcmp(name, "intptr_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__INTPTR_T, &type);
+    else if (!strcmp(name, "uintptr_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__UINTPTR_T, &type);
+    else if (!strcmp(name, "ptrdiff_t"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__PTRDIFF_T, &type);
+    else if (!strcmp(name, "c_complex"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__C_COMPLEX, &type);
+    else if (!strcmp(name, "c_double_complex"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__C_DOUBLE_COMPLEX, &type);
+    else if (!strcmp(name, "c_long_double_complex"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__C_LONG_DOUBLE_COMPLEX, &type);
+    else if (!strcmp(name, "float_int"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__FLOAT_INT, &type);
+    else if (!strcmp(name, "double_int"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__DOUBLE_INT, &type);
+    else if (!strcmp(name, "long_int"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__LONG_INT, &type);
+    else if (!strcmp(name, "2int"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__2INT, &type);
+    else if (!strcmp(name, "short_int"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__SHORT_INT, &type);
+    else if (!strcmp(name, "long_double_int"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__LONG_DOUBLE_INT, &type);
+    else if (!strcmp(name, "byte"))
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__BYTE, &type);
+    else
+        rc = yaksa_type_get_predefined(dtpi->context, YAKSA_TYPE__NULL, &type);
+
+    assert(rc == YAKSA_SUCCESS);
+    return type;
 }
 
 int DTPI_parse_base_type_str(DTP_pool_s * dtp, const char *str)
@@ -185,7 +191,7 @@ int DTPI_parse_base_type_str(DTP_pool_s * dtp, const char *str)
     DTPI_ALLOC_OR_FAIL(array_of_blklens, num_types * sizeof(int), rc);
 
     for (i = 0; i < num_types; i++) {
-        array_of_types[i] = name_to_type(typestr[i]);
+        array_of_types[i] = name_to_type(dtpi, typestr[i]);
 
         if (strlen(countstr[i]) == 0)
             array_of_blklens[i] = 1;

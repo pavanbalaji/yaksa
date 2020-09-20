@@ -141,6 +141,23 @@ int yaksa_type_create_struct(int count, const int *array_of_blocklengths,
 
     assert(yaksu_atomic_load(&yaksi_is_initialized));
 
+    yaksu_handle_t obj_id;
+    yaksa_context_t ctx_id;
+    for (int i = 0; i < count; i++) {
+        yaksa_context_t tmp;
+        YAKSI_TYPE_DECODE(array_of_types[i], tmp, obj_id);
+
+        /* make sure all types have the same context ID */
+        if (i) {
+            assert(tmp == ctx_id);
+        }
+        ctx_id = tmp;
+    }
+
+    yaksi_context_s *ctx;
+    rc = yaksu_handle_pool_elem_get(yaksi_global.context_handle_pool, ctx_id, (const void **) &ctx);
+    YAKSU_ERR_CHECK(rc, fn_fail);
+
     uintptr_t total_size;
     total_size = 0;
     for (int i = 0; i < count; i++) {
@@ -150,29 +167,29 @@ int yaksa_type_create_struct(int count, const int *array_of_blocklengths,
 
         total_size += type->size * array_of_blocklengths[i];
     }
-    if (total_size == 0) {
-        *newtype = YAKSA_TYPE__NULL;
-        goto fn_exit;
-    }
-
-    assert(count > 0);
-    yaksi_type_s **array_of_intypes;
-    array_of_intypes = (yaksi_type_s **) malloc(count * sizeof(yaksi_type_s *));
-
-    for (int i = 0; i < count; i++) {
-        rc = yaksi_type_get(array_of_types[i], &array_of_intypes[i]);
-        YAKSU_ERR_CHECK(rc, fn_fail);
-    }
 
     yaksi_type_s *outtype;
-    rc = yaksi_type_create_struct(count, array_of_blocklengths, array_of_displs, array_of_intypes,
-                                  &outtype);
-    YAKSU_ERR_CHECK(rc, fn_fail);
+    if (total_size == 0) {
+        rc = yaksi_type_create_dup(ctx->predef_type_null, &outtype);
+        YAKSU_ERR_CHECK(rc, fn_fail);
+    } else {
+        yaksi_type_s **array_of_intypes;
+        array_of_intypes = (yaksi_type_s **) malloc(count * sizeof(yaksi_type_s *));
 
-    rc = yaksi_type_handle_alloc(outtype, newtype);
-    YAKSU_ERR_CHECK(rc, fn_fail);
+        for (int i = 0; i < count; i++) {
+            rc = yaksi_type_get(array_of_types[i], &array_of_intypes[i]);
+            YAKSU_ERR_CHECK(rc, fn_fail);
+        }
 
-    free(array_of_intypes);
+        rc = yaksi_type_create_struct(count, array_of_blocklengths, array_of_displs,
+                                      array_of_intypes, &outtype);
+        YAKSU_ERR_CHECK(rc, fn_fail);
+
+        free(array_of_intypes);
+    }
+
+    rc = yaksi_type_handle_alloc(ctx, outtype, newtype);
+    YAKSU_ERR_CHECK(rc, fn_fail);
 
   fn_exit:
     return rc;

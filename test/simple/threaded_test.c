@@ -10,8 +10,11 @@
 #include "yaksa.h"
 
 #define DIMSIZE (80)
+#define MAX_THREADS  (16)
+#define ITERS 10000
 
 int **inbuf_, **outbuf_;
+yaksa_context_t contexts[MAX_THREADS / 2];
 
 void *thread_fn(void *arg);
 void *thread_fn(void *arg)
@@ -22,10 +25,12 @@ void *thread_fn(void *arg)
     uintptr_t tid = (uintptr_t) arg;
     int *inbuf = inbuf_[tid];
     int *outbuf = outbuf_[tid];
+    yaksa_type_t yaksa_int;
 
-    yaksa_init(NULL);
+    rc = yaksa_type_get_predefined(contexts[tid / 2], YAKSA_TYPE__INT, &yaksa_int);
+    assert(rc == YAKSA_SUCCESS);
 
-    rc = yaksa_type_create_vector(3, 2, 3, YAKSA_TYPE__INT, NULL, &vector);
+    rc = yaksa_type_create_vector(3, 2, 3, yaksa_int, NULL, &vector);
     assert(rc == YAKSA_SUCCESS);
 
     rc = yaksa_type_create_vector(5, 1, 10, vector, NULL, &vector_vector);
@@ -81,17 +86,15 @@ void *thread_fn(void *arg)
     yaksa_type_free(vector_vector);
     yaksa_type_free(vector);
 
-    yaksa_finalize();
-
     return NULL;
 }
-
-#define MAX_THREADS  (16)
-#define ITERS 10000
 
 int main()
 {
     pthread_t thread[MAX_THREADS];
+    int rc = YAKSA_SUCCESS;
+
+    assert(MAX_THREADS % 2 == 0);
 
     inbuf_ = (int **) malloc(MAX_THREADS * sizeof(int *));
     outbuf_ = (int **) malloc(MAX_THREADS * sizeof(int *));
@@ -100,12 +103,22 @@ int main()
         outbuf_[i] = (int *) malloc(DIMSIZE * DIMSIZE * sizeof(int));
     }
 
+    for (int i = 0; i < MAX_THREADS / 2; i++) {
+        rc = yaksa_context_create(NULL, &contexts[i]);
+        assert(rc == YAKSA_SUCCESS);
+    }
+
     for (int j = 0; j < ITERS; j++) {
         for (uintptr_t i = 0; i < MAX_THREADS; i++)
             pthread_create(&thread[i], NULL, thread_fn, (void *) i);
 
         for (int i = 0; i < MAX_THREADS; i++)
             pthread_join(thread[i], NULL);
+    }
+
+    for (int i = 0; i < MAX_THREADS / 2; i++) {
+        rc = yaksa_context_free(contexts[i]);
+        assert(rc == YAKSA_SUCCESS);
     }
 
     for (int i = 0; i < MAX_THREADS; i++) {

@@ -28,6 +28,7 @@ int basecount = -1;
 int seed = -1;
 int iters = -1;
 DTP_pool_s *dtp;
+yaksa_context_t *contexts;
 
 void *runtest(void *arg);
 void *runtest(void *arg)
@@ -74,7 +75,7 @@ void *runtest(void *arg)
         assert(rc == YAKSA_SUCCESS);
 
         yaksa_type_t newtype;
-        rc = yaksa_unflatten(&newtype, flatbuf);
+        rc = yaksa_unflatten(contexts[tid / 2], &newtype, flatbuf);
         assert(rc == YAKSA_SUCCESS);
 
 
@@ -89,10 +90,8 @@ void *runtest(void *arg)
         assert(rc == YAKSA_SUCCESS);
         assert(actual_pack_bytes == ssize * sobj.DTP_type_count);
 
-        if (request != YAKSA_REQUEST__NULL) {
-            rc = yaksa_request_wait(request);
-            assert(rc == YAKSA_SUCCESS);
-        }
+        rc = yaksa_request_wait(request);
+        assert(rc == YAKSA_SUCCESS);
 
         /* reinitialize sbuf with random data */
         rc = DTP_obj_buf_init(sobj, sbuf, -1, -1, basecount);
@@ -103,10 +102,8 @@ void *runtest(void *arg)
                            sobj.DTP_type_count, newtype, 0, &actual_unpack_bytes, NULL, &request);
         assert(rc == YAKSA_SUCCESS);
 
-        if (request != YAKSA_REQUEST__NULL) {
-            rc = yaksa_request_wait(request);
-            assert(rc == YAKSA_SUCCESS);
-        }
+        rc = yaksa_request_wait(request);
+        assert(rc == YAKSA_SUCCESS);
 
         rc = yaksa_type_free(newtype);
         assert(rc == YAKSA_SUCCESS);
@@ -169,8 +166,6 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    yaksa_init(NULL);
-
     dtp = (DTP_pool_s *) malloc(num_threads * sizeof(DTP_pool_s));
     for (uintptr_t i = 0; i < num_threads; i++) {
         int rc = DTP_pool_create(typestr, basecount, seed + i, &dtp[i]);
@@ -179,11 +174,22 @@ int main(int argc, char **argv)
 
     pthread_t *threads = (pthread_t *) malloc(num_threads * sizeof(pthread_t));
 
+    contexts = (yaksa_context_t *) malloc(num_threads * sizeof(yaksa_context_t) / 2);
+    for (int i = 0; i < num_threads / 2; i++) {
+        int rc = yaksa_context_create(NULL, &contexts[i]);
+        assert(rc == YAKSA_SUCCESS);
+    }
+
     for (uintptr_t i = 0; i < num_threads; i++)
         pthread_create(&threads[i], NULL, runtest, (void *) i);
 
     for (uintptr_t i = 0; i < num_threads; i++)
         pthread_join(threads[i], NULL);
+
+    for (int i = 0; i < num_threads / 2; i++) {
+        int rc = yaksa_context_free(contexts[i]);
+        assert(rc == YAKSA_SUCCESS);
+    }
 
     free(threads);
 
@@ -192,8 +198,6 @@ int main(int argc, char **argv)
         assert(rc == DTP_SUCCESS);
     }
     free(dtp);
-
-    yaksa_finalize();
 
     return 0;
 }

@@ -26,6 +26,9 @@ int DTP_pool_create(const char *base_type_str, uintptr_t base_type_count, int se
     DTPI_ALLOC_OR_FAIL(dtp->priv, sizeof(DTPI_pool_s), rc);
     DTPI_pool_s *dtpi = dtp->priv;
 
+    rc = yaksa_context_create(NULL, &dtpi->context);
+    DTPI_ERR_CHK_RC(rc);
+
     rc = DTPI_parse_base_type_str(dtp, base_type_str);
     DTPI_ERR_CHK_RC(rc);
 
@@ -70,6 +73,9 @@ int DTP_pool_free(DTP_pool_s dtp)
         DTPI_FREE(dtpi->base_type_attrs.array_of_displs);
         DTPI_FREE(dtpi->base_type_attrs.array_of_types);
     }
+    rc = yaksa_context_free(dtpi->context);
+    DTPI_ERR_CHK_RC(rc);
+
     DTPI_FREE(dtpi);
 
     DTPI_FUNC_EXIT();

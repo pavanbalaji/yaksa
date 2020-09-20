@@ -15,9 +15,22 @@ int yaksa_ipack(const void *inbuf, uintptr_t incount, yaksa_type_t type, uintptr
 
     assert(yaksu_atomic_load(&yaksi_is_initialized));
 
+    yaksa_context_t ctx_id;
+    yaksu_handle_t obj_id;
+    YAKSI_TYPE_DECODE(type, ctx_id, obj_id);
+
+    yaksi_context_s *ctx;
+    rc = yaksu_handle_pool_elem_get(yaksi_global.context_handle_pool, ctx_id, (const void **) &ctx);
+    YAKSU_ERR_CHECK(rc, fn_fail);
+
     if (incount == 0) {
         *actual_pack_bytes = 0;
-        *request = YAKSA_REQUEST__NULL;
+
+        yaksi_request_s *req;
+        rc = yaksi_request_create(ctx, &req);
+        YAKSU_ERR_CHECK(rc, fn_fail);
+
+        *request = req->id;
         goto fn_exit;
     }
 
@@ -27,12 +40,17 @@ int yaksa_ipack(const void *inbuf, uintptr_t incount, yaksa_type_t type, uintptr
 
     if (yaksi_type->size == 0) {
         *actual_pack_bytes = 0;
-        *request = YAKSA_REQUEST__NULL;
+
+        yaksi_request_s *req;
+        rc = yaksi_request_create(ctx, &req);
+        YAKSU_ERR_CHECK(rc, fn_fail);
+
+        *request = req->id;
         goto fn_exit;
     }
 
     yaksi_request_s *yaksi_request;
-    rc = yaksi_request_create(&yaksi_request);
+    rc = yaksi_request_create(ctx, &yaksi_request);
     YAKSU_ERR_CHECK(rc, fn_fail);
 
     yaksi_info_s *yaksi_info;
@@ -41,14 +59,7 @@ int yaksa_ipack(const void *inbuf, uintptr_t incount, yaksa_type_t type, uintptr
                      actual_pack_bytes, yaksi_info, yaksi_request);
     YAKSU_ERR_CHECK(rc, fn_fail);
 
-    if (yaksu_atomic_load(&yaksi_request->cc)) {
-        *request = yaksi_request->id;
-    } else {
-        rc = yaksi_request_free(yaksi_request);
-        YAKSU_ERR_CHECK(rc, fn_fail);
-
-        *request = YAKSA_REQUEST__NULL;
-    }
+    *request = yaksi_request->id;
 
   fn_exit:
     return rc;

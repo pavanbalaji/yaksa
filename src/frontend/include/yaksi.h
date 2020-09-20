@@ -45,38 +45,63 @@ struct yaksi_request_s;
 /*
  * The type handle is divided into the following parts:
  *
- *    32 bits -- unused
+ *    32 bits -- context id
  *    32 bits -- type object id
  */
-#define YAKSI_TYPE_UNUSED_BITS                  (32)
+#define YAKSI_TYPE_CONTEXT_ID_BITS              (32)
 #define YAKSI_TYPE_OBJECT_ID_BITS               (32)
 
-#define YAKSI_TYPE_GET_OBJECT_ID(handle) \
-    ((handle) << (64 - YAKSI_TYPE_OBJECT_ID_BITS) >> (64 - YAKSI_TYPE_OBJECT_ID_BITS))
-#define YAKSI_TYPE_SET_OBJECT_ID(handle, obj_id)                        \
+#define YAKSI_TYPE_ENCODE(handle, ctx_id, obj_id)                       \
     do {                                                                \
-        assert((obj_id) < ((yaksa_type_t) 1 << YAKSI_TYPE_OBJECT_ID_BITS)); \
-        (handle) = (((handle) & ~((((yaksa_type_t) 1) << YAKSI_TYPE_OBJECT_ID_BITS) - 1)) + (obj_id)); \
+        (handle) = ((ctx_id) << YAKSI_TYPE_OBJECT_ID_BITS) + (obj_id);  \
+    } while (0)
+
+#define YAKSI_TYPE_DECODE(handle, ctx_id, obj_id)                       \
+    do {                                                                \
+        (ctx_id) = ((handle) >> YAKSI_TYPE_OBJECT_ID_BITS);             \
+        (obj_id) = ((handle) << YAKSI_TYPE_CONTEXT_ID_BITS >> YAKSI_TYPE_CONTEXT_ID_BITS); \
     } while (0)
 
 /*
  * The request handle is divided into the following parts:
  *
- *    32 bits -- unused
+ *    32 bits -- context id
  *    32 bits -- request object id
  */
-#define YAKSI_REQUEST_UNUSED_BITS                  (32)
+#define YAKSI_REQUEST_CONTEXT_ID_BITS              (32)
 #define YAKSI_REQUEST_OBJECT_ID_BITS               (32)
 
-#define YAKSI_REQUEST_GET_OBJECT_ID(handle) \
-    ((handle) << (64 - YAKSI_REQUEST_OBJECT_ID_BITS) >> (64 - YAKSI_REQUEST_OBJECT_ID_BITS))
+#define YAKSI_REQUEST_ENCODE(handle, ctx_id, obj_id)                    \
+    do {                                                                \
+        (handle) = ((ctx_id) << YAKSI_REQUEST_OBJECT_ID_BITS) + (obj_id); \
+    } while (0)
+
+#define YAKSI_REQUEST_DECODE(handle, ctx_id, obj_id)                    \
+    do {                                                                \
+        (ctx_id) = ((handle) >> YAKSI_REQUEST_OBJECT_ID_BITS);          \
+        (obj_id) = ((handle) << YAKSI_REQUEST_CONTEXT_ID_BITS >> YAKSI_REQUEST_CONTEXT_ID_BITS); \
+    } while (0)
 
 /* global variables */
 typedef struct {
-    yaksu_handle_pool_s type_handle_pool;
-    yaksu_handle_pool_s request_handle_pool;
+    yaksu_handle_pool_s context_handle_pool;
 } yaksi_global_s;
 extern yaksi_global_s yaksi_global;
+
+typedef struct yaksi_context_s {
+    yaksu_handle_t id;
+
+    yaksu_handle_pool_s type_handle_pool;
+    yaksa_type_t predef_type[YAKSI_TYPE__MAX_PREDEFINED_TYPES];
+
+    /* specially store the null request object for convenience of
+     * access */
+    struct yaksi_type_s *predef_type_null;
+
+    yaksu_handle_pool_s request_handle_pool;
+
+    UT_hash_handle hh;
+} yaksi_context_s;
 
 typedef struct yaksi_type_s {
     yaksu_atomic_int refcount;
@@ -257,12 +282,12 @@ int yaksi_iov(const char *buf, uintptr_t count, yaksi_type_s * type, uintptr_t i
 int yaksi_flatten_size(yaksi_type_s * type, uintptr_t * flattened_type_size);
 
 /* type pool */
-int yaksi_type_handle_alloc(yaksi_type_s * type, yaksa_type_t * handle);
+int yaksi_type_handle_alloc(yaksi_context_s * ctx, yaksi_type_s * type, yaksa_type_t * handle);
 int yaksi_type_handle_dealloc(yaksa_type_t handle, yaksi_type_s ** type);
 int yaksi_type_get(yaksa_type_t type, yaksi_type_s ** yaksi_type);
 
 /* request pool */
-int yaksi_request_create(yaksi_request_s ** request);
+int yaksi_request_create(yaksi_context_s * ctx, yaksi_request_s ** request);
 int yaksi_request_free(yaksi_request_s * request);
 int yaksi_request_get(yaksa_request_t request, yaksi_request_s ** yaksi_request);
 

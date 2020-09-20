@@ -52,10 +52,12 @@ static int errcount = 0;
 static int init_verify_basic_datatype(yaksa_type_t type_, char *buf, int val, int val_stride,
                                       int verify)
 {
-    yaksa_type_t type = type_;
     int rc = DTP_SUCCESS;
+    unsigned int type_seed;
 
-    switch (type) {
+    yaksa_type_get_predefined_seed(type_, &type_seed);
+
+    switch (type_seed) {
         case YAKSA_TYPE___BOOL:
             INIT_VERIFY_SINGLE_VAL(rc, buf, val, verify, _Bool);
             val += val_stride;

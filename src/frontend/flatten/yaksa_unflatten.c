@@ -9,16 +9,17 @@
 #include <string.h>
 #include <stdlib.h>
 
-static inline int unflatten(yaksi_type_s ** type, const void *flattened_type)
+static inline int unflatten(yaksi_context_s * ctx, yaksi_type_s ** type, const void *flattened_type)
 {
     int rc = YAKSA_SUCCESS;
     yaksi_type_s *newtype = NULL;
     const char *flatbuf = (const char *) flattened_type;
 
     if (((yaksi_type_s *) flattened_type)->kind == YAKSI_TYPE_KIND__BUILTIN) {
-        yaksa_type_t id = ((yaksi_type_s *) flattened_type)->u.builtin.handle;
+        int id = ((yaksi_type_s *) flattened_type)->u.builtin.handle;
+
         yaksi_type_s *tmp;
-        rc = yaksi_type_get(id, &tmp);
+        rc = yaksi_type_get(ctx->predef_type[id], &tmp);
         YAKSU_ERR_CHECK(rc, fn_fail);
         yaksu_atomic_incr(&tmp->refcount);
         newtype = tmp;
@@ -35,22 +36,22 @@ static inline int unflatten(yaksi_type_s ** type, const void *flattened_type)
 
     switch (newtype->kind) {
         case YAKSI_TYPE_KIND__CONTIG:
-            rc = unflatten(&newtype->u.contig.child, flatbuf);
+            rc = unflatten(ctx, &newtype->u.contig.child, flatbuf);
             YAKSU_ERR_CHECK(rc, fn_fail);
             break;
 
         case YAKSI_TYPE_KIND__DUP:
-            rc = unflatten(&newtype->u.dup.child, flatbuf);
+            rc = unflatten(ctx, &newtype->u.dup.child, flatbuf);
             YAKSU_ERR_CHECK(rc, fn_fail);
             break;
 
         case YAKSI_TYPE_KIND__RESIZED:
-            rc = unflatten(&newtype->u.resized.child, flatbuf);
+            rc = unflatten(ctx, &newtype->u.resized.child, flatbuf);
             YAKSU_ERR_CHECK(rc, fn_fail);
             break;
 
         case YAKSI_TYPE_KIND__HVECTOR:
-            rc = unflatten(&newtype->u.hvector.child, flatbuf);
+            rc = unflatten(ctx, &newtype->u.hvector.child, flatbuf);
             YAKSU_ERR_CHECK(rc, fn_fail);
             break;
 
@@ -61,7 +62,7 @@ static inline int unflatten(yaksi_type_s ** type, const void *flattened_type)
                    newtype->u.blkhindx.count * sizeof(intptr_t));
             flatbuf += newtype->u.blkhindx.count * sizeof(intptr_t);
 
-            rc = unflatten(&newtype->u.blkhindx.child, flatbuf);
+            rc = unflatten(ctx, &newtype->u.blkhindx.child, flatbuf);
             YAKSU_ERR_CHECK(rc, fn_fail);
             break;
 
@@ -78,7 +79,7 @@ static inline int unflatten(yaksi_type_s ** type, const void *flattened_type)
                    newtype->u.hindexed.count * sizeof(intptr_t));
             flatbuf += newtype->u.hindexed.count * sizeof(intptr_t);
 
-            rc = unflatten(&newtype->u.hindexed.child, flatbuf);
+            rc = unflatten(ctx, &newtype->u.hindexed.child, flatbuf);
             YAKSU_ERR_CHECK(rc, fn_fail);
             break;
 
@@ -98,7 +99,7 @@ static inline int unflatten(yaksi_type_s ** type, const void *flattened_type)
             newtype->u.str.array_of_types =
                 (yaksi_type_s **) malloc(newtype->u.str.count * sizeof(yaksi_type_s *));
             for (int i = 0; i < newtype->u.str.count; i++) {
-                rc = unflatten(&newtype->u.str.array_of_types[i], flatbuf);
+                rc = unflatten(ctx, &newtype->u.str.array_of_types[i], flatbuf);
                 YAKSU_ERR_CHECK(rc, fn_fail);
 
                 uintptr_t tmp;
@@ -110,7 +111,7 @@ static inline int unflatten(yaksi_type_s ** type, const void *flattened_type)
             break;
 
         case YAKSI_TYPE_KIND__SUBARRAY:
-            rc = unflatten(&newtype->u.subarray.primary, flatbuf);
+            rc = unflatten(ctx, &newtype->u.subarray.primary, flatbuf);
             YAKSU_ERR_CHECK(rc, fn_fail);
             break;
 
@@ -127,19 +128,24 @@ static inline int unflatten(yaksi_type_s ** type, const void *flattened_type)
     goto fn_exit;
 }
 
-int yaksa_unflatten(yaksa_type_t * type, const void *flattened_type)
+int yaksa_unflatten(yaksa_context_t context, yaksa_type_t * type, const void *flattened_type)
 {
     int rc = YAKSA_SUCCESS;
     yaksi_type_s *yaksi_type;
 
     assert(yaksu_atomic_load(&yaksi_is_initialized));
 
-    rc = unflatten(&yaksi_type, flattened_type);
+    yaksi_context_s *ctx;
+    rc = yaksu_handle_pool_elem_get(yaksi_global.context_handle_pool, context,
+                                    (const void **) &ctx);
+    YAKSU_ERR_CHECK(rc, fn_fail);
+
+    rc = unflatten(ctx, &yaksi_type, flattened_type);
     YAKSU_ERR_CHECK(rc, fn_fail);
 
     assert(yaksi_type);
 
-    rc = yaksi_type_handle_alloc(yaksi_type, type);
+    rc = yaksi_type_handle_alloc(ctx, yaksi_type, type);
     YAKSU_ERR_CHECK(rc, fn_fail);
 
   fn_exit:

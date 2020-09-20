@@ -3,7 +3,7 @@
 ##     See COPYRIGHT in top-level directory
 ##
 
-AM_CPPFLAGS += -I$(top_srcdir)/src/frontend/init
+AM_CPPFLAGS += -I$(top_srcdir)/src/frontend/context
 
 libyaksa_la_SOURCES += \
-	src/frontend/init/yaksa_init.c
+	src/frontend/context/yaksa_context.c

@@ -92,9 +92,6 @@ int yaksa_type_free(yaksa_type_t type)
 
     assert(yaksu_atomic_load(&yaksi_is_initialized));
 
-    if (type == YAKSA_TYPE__NULL)
-        goto fn_exit;
-
     yaksu_handle_t id;
     id = (yaksu_handle_t) type;
     rc = yaksi_type_handle_dealloc(id, &yaksi_type);

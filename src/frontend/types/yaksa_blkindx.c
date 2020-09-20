@@ -111,20 +111,29 @@ int yaksa_type_create_hindexed_block(int count, int blocklength, const intptr_t 
 
     assert(yaksu_atomic_load(&yaksi_is_initialized));
 
+    yaksu_handle_t obj_id;
+    yaksa_context_t ctx_id;
+    YAKSI_TYPE_DECODE(oldtype, ctx_id, obj_id);
+
+    yaksi_context_s *ctx;
+    rc = yaksu_handle_pool_elem_get(yaksi_global.context_handle_pool, ctx_id, (const void **) &ctx);
+    YAKSU_ERR_CHECK(rc, fn_fail);
+
     yaksi_type_s *intype;
     rc = yaksi_type_get(oldtype, &intype);
     YAKSU_ERR_CHECK(rc, fn_fail);
 
+    yaksi_type_s *outtype;
     if (count * intype->size == 0) {
-        *newtype = YAKSA_TYPE__NULL;
-        goto fn_exit;
+        rc = yaksi_type_create_dup(ctx->predef_type_null, &outtype);
+        YAKSU_ERR_CHECK(rc, fn_fail);
+    } else {
+        rc = yaksi_type_create_hindexed_block(count, blocklength, array_of_displs, intype,
+                                              &outtype);
+        YAKSU_ERR_CHECK(rc, fn_fail);
     }
 
-    yaksi_type_s *outtype;
-    rc = yaksi_type_create_hindexed_block(count, blocklength, array_of_displs, intype, &outtype);
-    YAKSU_ERR_CHECK(rc, fn_fail);
-
-    rc = yaksi_type_handle_alloc(outtype, newtype);
+    rc = yaksi_type_handle_alloc(ctx, outtype, newtype);
     YAKSU_ERR_CHECK(rc, fn_fail);
 
   fn_exit:
@@ -141,27 +150,34 @@ int yaksa_type_create_indexed_block(int count, int blocklength, const int *array
 
     assert(yaksu_atomic_load(&yaksi_is_initialized));
 
+    yaksu_handle_t obj_id;
+    yaksa_context_t ctx_id;
+    YAKSI_TYPE_DECODE(oldtype, ctx_id, obj_id);
+
+    yaksi_context_s *ctx;
+    rc = yaksu_handle_pool_elem_get(yaksi_global.context_handle_pool, ctx_id, (const void **) &ctx);
+    YAKSU_ERR_CHECK(rc, fn_fail);
+
     yaksi_type_s *intype;
     rc = yaksi_type_get(oldtype, &intype);
     YAKSU_ERR_CHECK(rc, fn_fail);
 
-    if (count * intype->size == 0) {
-        *newtype = YAKSA_TYPE__NULL;
-        goto fn_exit;
-    }
-    assert(count > 0);
-
-    real_array_of_displs = (intptr_t *) malloc(count * sizeof(intptr_t));
-
-    for (int i = 0; i < count; i++)
-        real_array_of_displs[i] = array_of_displs[i] * intype->extent;
-
     yaksi_type_s *outtype;
-    rc = yaksi_type_create_hindexed_block(count, blocklength, real_array_of_displs, intype,
-                                          &outtype);
-    YAKSU_ERR_CHECK(rc, fn_fail);
+    if (count * intype->size == 0) {
+        rc = yaksi_type_create_dup(ctx->predef_type_null, &outtype);
+        YAKSU_ERR_CHECK(rc, fn_fail);
+    } else {
+        real_array_of_displs = (intptr_t *) malloc(count * sizeof(intptr_t));
 
-    rc = yaksi_type_handle_alloc(outtype, newtype);
+        for (int i = 0; i < count; i++)
+            real_array_of_displs[i] = array_of_displs[i] * intype->extent;
+
+        rc = yaksi_type_create_hindexed_block(count, blocklength, real_array_of_displs, intype,
+                                              &outtype);
+        YAKSU_ERR_CHECK(rc, fn_fail);
+    }
+
+    rc = yaksi_type_handle_alloc(ctx, outtype, newtype);
     YAKSU_ERR_CHECK(rc, fn_fail);
 
   fn_exit:
