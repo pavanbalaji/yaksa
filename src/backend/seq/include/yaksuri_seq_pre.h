@@ -12,6 +12,10 @@
 
 typedef struct {
     void *priv;
+} yaksuri_seq_context_s;
+
+typedef struct {
+    void *priv;
 } yaksuri_seq_type_s;
 
 typedef struct {

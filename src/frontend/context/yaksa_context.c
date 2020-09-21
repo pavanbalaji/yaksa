@@ -169,6 +169,9 @@ int yaksa_context_create(yaksa_info_t info, yaksa_context_t * context)
     rc = yaksu_handle_pool_elem_alloc(yaksi_global.context_handle_pool, &ctx->id, ctx);
     YAKSU_ERR_CHECK(rc, fn_fail);
 
+    rc = yaksur_context_create_hook(ctx);
+    YAKSU_ERR_CHECK(rc, fn_fail);
+
     *context = (yaksa_context_t) ctx->id;
 
     /* populate the context */
@@ -314,6 +317,9 @@ int yaksa_context_free(yaksa_context_t context)
         rc = yaksi_type_free(tmp);
         YAKSU_ERR_CHECK(rc, fn_fail);
     }
+
+    rc = yaksur_context_free_hook(ctx);
+    YAKSU_ERR_CHECK(rc, fn_fail);
 
     rc = yaksu_handle_pool_free(ctx->type_handle_pool);
     YAKSU_ERR_CHECK(rc, fn_fail);

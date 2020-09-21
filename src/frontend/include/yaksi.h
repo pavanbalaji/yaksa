@@ -100,6 +100,9 @@ typedef struct yaksi_context_s {
 
     yaksu_handle_pool_s request_handle_pool;
 
+    /* give some private space for the backend to store content */
+    yaksur_context_s backend;
+
     UT_hash_handle hh;
 } yaksi_context_s;
 

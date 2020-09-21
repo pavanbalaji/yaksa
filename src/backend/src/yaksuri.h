@@ -27,12 +27,17 @@ typedef struct {
 
 typedef struct {
     struct {
-        yaksuri_slab_s host;
-        yaksuri_slab_s *device;
         yaksur_gpudriver_info_s *info;
     } gpudriver[YAKSURI_GPUDRIVER_ID__LAST];
 } yaksuri_global_s;
 extern yaksuri_global_s yaksuri_global;
+
+typedef struct yaksuri_context_s {
+    struct {
+        yaksuri_slab_s host;
+        yaksuri_slab_s *device;
+    } gpudriver[YAKSURI_GPUDRIVER_ID__LAST];
+} yaksuri_context_s;
 
 typedef struct {
     yaksuri_gpudriver_id_e gpudriver_id;

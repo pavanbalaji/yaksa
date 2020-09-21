@@ -208,31 +208,31 @@ static int alloc_subop(progress_subop_s ** subop)
     /* figure out if we actually have enough buffer space */
     if (need_gpu_tmpbuf) {
         uintptr_t d_nelems;
-        if (yaksuri_global.gpudriver[id].device[devid].slab_head_offset == 0 &&
-            yaksuri_global.gpudriver[id].device[devid].slab_tail_offset == 0) {
+        if (ctx_priv->gpudriver[id].device[devid].slab_head_offset == 0 &&
+            ctx_priv->gpudriver[id].device[devid].slab_tail_offset == 0) {
             d_nelems = TMPBUF_SLAB_SIZE / elem->pup.type->size;
-            gpu_tmpbuf_offset = yaksuri_global.gpudriver[id].device[devid].slab_tail_offset;
-        } else if (yaksuri_global.gpudriver[id].device[devid].slab_tail_offset >
-                   yaksuri_global.gpudriver[id].device[devid].slab_head_offset) {
+            gpu_tmpbuf_offset = ctx_priv->gpudriver[id].device[devid].slab_tail_offset;
+        } else if (ctx_priv->gpudriver[id].device[devid].slab_tail_offset >
+                   ctx_priv->gpudriver[id].device[devid].slab_head_offset) {
             uintptr_t count =
                 (TMPBUF_SLAB_SIZE -
-                 yaksuri_global.gpudriver[id].device[devid].slab_tail_offset) /
+                 ctx_priv->gpudriver[id].device[devid].slab_tail_offset) /
                 elem->pup.type->size;
             if (count) {
                 d_nelems = count;
-                gpu_tmpbuf_offset = yaksuri_global.gpudriver[id].device[devid].slab_tail_offset;
+                gpu_tmpbuf_offset = ctx_priv->gpudriver[id].device[devid].slab_tail_offset;
             } else {
                 d_nelems =
-                    yaksuri_global.gpudriver[id].device[devid].slab_head_offset /
+                    ctx_priv->gpudriver[id].device[devid].slab_head_offset /
                     elem->pup.type->size;
                 gpu_tmpbuf_offset = 0;
             }
         } else {
             d_nelems =
-                (yaksuri_global.gpudriver[id].device[devid].slab_head_offset -
-                 yaksuri_global.gpudriver[id].device[devid].slab_tail_offset) /
+                (ctx_priv->gpudriver[id].device[devid].slab_head_offset -
+                 ctx_priv->gpudriver[id].device[devid].slab_tail_offset) /
                 elem->pup.type->size;
-            gpu_tmpbuf_offset = yaksuri_global.gpudriver[id].device[devid].slab_tail_offset;
+            gpu_tmpbuf_offset = ctx_priv->gpudriver[id].device[devid].slab_tail_offset;
         }
 
         if (nelems > d_nelems)
@@ -280,11 +280,11 @@ static int alloc_subop(progress_subop_s ** subop)
 
     /* allocate the actual buffer space */
     if (need_gpu_tmpbuf) {
-        if (yaksuri_global.gpudriver[id].device[devid].slab == NULL) {
-            yaksuri_global.gpudriver[id].device[devid].slab =
+        if (ctx_priv->gpudriver[id].device[devid].slab == NULL) {
+            ctx_priv->gpudriver[id].device[devid].slab =
                 yaksuri_global.gpudriver[id].info->gpu_malloc(TMPBUF_SLAB_SIZE, id);
         }
-        yaksuri_global.gpudriver[id].device[devid].slab_tail_offset =
+        ctx_priv->gpudriver[id].device[devid].slab_tail_offset =
             gpu_tmpbuf_offset + nelems * elem->pup.type->size;
     }
 
@@ -305,7 +305,7 @@ static int alloc_subop(progress_subop_s ** subop)
     (*subop)->count = nelems;
     if (need_gpu_tmpbuf)
         (*subop)->gpu_tmpbuf =
-            (void *) ((char *) yaksuri_global.gpudriver[id].device[devid].slab + gpu_tmpbuf_offset);
+            (void *) ((char *) ctx_priv->gpudriver[id].device[devid].slab + gpu_tmpbuf_offset);
     else
         (*subop)->gpu_tmpbuf = NULL;
 
@@ -357,15 +357,15 @@ static int free_subop(progress_subop_s * subop)
             devid = elem->pup.outattr.device;
 
         assert(subop->gpu_tmpbuf ==
-               (char *) yaksuri_global.gpudriver[id].device[devid].slab +
-               yaksuri_global.gpudriver[id].device[devid].slab_head_offset);
+               (char *) ctx_priv->gpudriver[id].device[devid].slab +
+               ctx_priv->gpudriver[id].device[devid].slab_head_offset);
         if (subop->next) {
-            yaksuri_global.gpudriver[id].device[devid].slab_head_offset =
+            ctx_priv->gpudriver[id].device[devid].slab_head_offset =
                 (uintptr_t) ((char *) subop->next->gpu_tmpbuf -
-                             (char *) yaksuri_global.gpudriver[id].device[devid].slab);
+                             (char *) ctx_priv->gpudriver[id].device[devid].slab);
         } else {
-            yaksuri_global.gpudriver[id].device[devid].slab_head_offset =
-                yaksuri_global.gpudriver[id].device[devid].slab_tail_offset = 0;
+            ctx_priv->gpudriver[id].device[devid].slab_head_offset =
+                ctx_priv->gpudriver[id].device[devid].slab_tail_offset = 0;
         }
     }
 
@@ -407,7 +407,7 @@ static int free_subop(progress_subop_s * subop)
     goto fn_exit;
 }
 
-int yaksuri_progress_poke(void)
+int yaksuri_progress_poke(yaksi_context_s *ctx)
 {
     int rc = YAKSA_SUCCESS;
 

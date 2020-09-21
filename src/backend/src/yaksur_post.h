@@ -11,6 +11,8 @@
 
 int yaksur_init_hook(void);
 int yaksur_finalize_hook(void);
+int yaksur_context_create_hook(yaksi_context_s *ctx);
+int yaksur_context_free_hook(yaksi_context_s *ctx);
 int yaksur_type_create_hook(yaksi_type_s * type);
 int yaksur_type_free_hook(yaksi_type_s * type);
 int yaksur_request_create_hook(yaksi_request_s * request);
