@@ -13,42 +13,12 @@
 #include "yaksu.h"
 #include "yaksuri.h"
 
-typedef struct progress_subop_s {
-    uintptr_t count_offset;
-    uintptr_t count;
-    void *gpu_tmpbuf;
-    void *host_tmpbuf;
-    void *interm_event;
-    void *event;
-
-    struct progress_subop_s *next;
-} progress_subop_s;
-
 typedef struct progress_elem_s {
-    struct {
-        yaksuri_puptype_e puptype;
-
-        yaksur_ptr_attr_s inattr;
-        yaksur_ptr_attr_s outattr;
-
-        const void *inbuf;
-        void *outbuf;
-        uintptr_t count;
-        yaksi_type_s *type;
-
-        uintptr_t completed_count;
-        uintptr_t issued_count;
-        progress_subop_s *subop_head;
-        progress_subop_s *subop_tail;
-    } pup;
-
     yaksi_request_s *request;
-    yaksi_info_s *info;
-    struct progress_elem_s *next;
+    UT_hash_handle hh;
 } progress_elem_s;
 
-static progress_elem_s *progress_head = NULL;
-static progress_elem_s *progress_tail = NULL;
+static progress_elem_s *progress_list = NULL;
 static pthread_mutex_t progress_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #define TMPBUF_SLAB_SIZE  (16 * 1024 * 1024)
@@ -82,10 +52,43 @@ static int progress_dequeue(progress_elem_s * elem)
     return rc;
 }
 
-int yaksuri_progress_enqueue(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type,
-                             yaksi_info_s * info, yaksi_request_s * request,
-                             yaksur_ptr_attr_s inattr, yaksur_ptr_attr_s outattr,
-                             yaksuri_puptype_e puptype)
+static void enqueue_subreq(yaksi_request_s * request, yaksuri_subreq_s *subreq)
+{
+    yaksu_atomic_incr(&request->cc);
+
+    pthread_mutex_lock(&progress_mutex);
+    DL_APPEND(request->subreqs, subreq);
+
+    progress_elem_s *elem;
+    HASH_FIND_PTR(progress_list, &request, elem);
+    if (elem == NULL) {
+        elem = (progress_elem_s *) malloc(sizeof(progress_elem_s));
+        elem->request = request;
+        HASH_ADD_PTR(progress_list, request, elem);
+    }
+
+    pthread_mutex_unlock(&progress_mutex);
+}
+
+int yaksuri_progress_enqueue_direct(yaksi_request_s * request, void *event)
+{
+    int rc = YAKSA_SUCCESS;
+
+    yaksuri_subreq_s *subreq;
+    subreq = (yaksuri_subreq_s *) malloc(sizeof(yaksuri_subreq_s));
+
+    subreq->kind = YAKSURI_SUBREQ_KIND__DIRECT;
+    subreq->u.direct.event = event;
+
+    enqueue_subreq(request, subreq);
+
+    return rc;
+}
+
+int yaksuri_progress_enqueue_indirect(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type,
+                                      yaksi_info_s * info, yaksi_request_s * request,
+                                      yaksur_ptr_attr_s inattr, yaksur_ptr_attr_s outattr,
+                                      yaksuri_puptype_e puptype)
 {
     int rc = YAKSA_SUCCESS;
 
@@ -97,34 +100,83 @@ int yaksuri_progress_enqueue(const void *inbuf, void *outbuf, uintptr_t count, y
         goto fn_exit;
     }
 
-    /* enqueue to the progress engine */
-    progress_elem_s *newelem;
-    newelem = (progress_elem_s *) malloc(sizeof(progress_elem_s));
+    yaksuri_subreq_s *subreq;
+    subreq = (yaksuri_subreq_s *) malloc(sizeof(yaksuri_subreq_s));
 
-    newelem->pup.puptype = puptype;
-    newelem->pup.inattr = inattr;
-    newelem->pup.outattr = outattr;
-    newelem->pup.inbuf = inbuf;
-    newelem->pup.outbuf = outbuf;
-    newelem->pup.count = count;
-    newelem->pup.type = type;
-    newelem->pup.completed_count = 0;
-    newelem->pup.issued_count = 0;
-    newelem->pup.subop_head = newelem->pup.subop_tail = NULL;
-    newelem->request = request;
-    newelem->info = info;
-    newelem->next = NULL;
-
-    /* enqueue the new element */
-    yaksu_atomic_incr(&request->cc);
-    pthread_mutex_lock(&progress_mutex);
-    if (progress_tail == NULL) {
-        progress_head = progress_tail = newelem;
-    } else {
-        progress_tail->next = newelem;
-        progress_tail = newelem;
+    if (type->contig) {
+        if (inattr.type == YAKSUR_PTR_TYPE__GPU) {
+            subreq->kind = YAKSURI_SUBREQ_KIND__COPY_D2URH;
+            subreq->u.copy_d2urh.rh = NULL;
+            subreq->u.copy_d2urh.events = NULL;
+        } else if (outattr.type == YAKSUR_PTR_TYPE__GPU) {
+            subreq->kind = YAKSURI_SUBREQ_KIND__COPY_URH2D;
+            subreq->u.copy_urh2d.rh = NULL;
+            subreq->u.copy_urh2d.events = NULL;
+        }
+    } else if (puptype == YAKSURI_PUPTYPE__PACK) {
+        if (inattr.type == YAKSUR_PTR_TYPE__GPU) {
+            if (outattr.type == YAKSUR_PTR_TYPE__GPU) {
+                subreq->kind = YAKSURI_SUBREQ_KIND__PACK_D2D_IPC;
+                subreq->u.pack_d2d_ipc.src_d = NULL;
+                subreq->u.pack_d2d_ipc.events = NULL;
+            } else if (outattr.type == YAKSUR_PTR_TYPE__REGISTERED_HOST) {
+                subreq->kind = YAKSURI_SUBREQ_KIND__PACK_D2RH;
+                subreq->u.pack_d2rh.src_d = NULL;
+                subreq->u.pack_d2rh.events = NULL;
+            } else if (outattr.type == YAKSUR_PTR_TYPE__UNREGISTERED_HOST) {
+                subreq->kind = YAKSURI_SUBREQ_KIND__PACK_D2URH;
+                subreq->u.pack_d2urh.src_d = NULL;
+                subreq->u.pack_d2urh.rh = NULL;
+                subreq->u.pack_d2urh.events = NULL;
+            }
+        } else if (outattr.type == YAKSUR_PTR_TYPE__GPU) {
+            if (inattr.type == YAKSUR_PTR_TYPE__REGISTERED_HOST) {
+                subreq->kind = YAKSURI_SUBREQ_KIND__PACK_RH2D;
+                subreq->u.pack_rh2d.rh = NULL;
+                subreq->u.pack_rh2d.events = NULL;
+            } else if (inattr.type == YAKSUR_PTR_TYPE__UNREGISTERED_HOST) {
+                subreq->kind = YAKSURI_SUBREQ_KIND__PACK_URH2D;
+                subreq->u.pack_urh2d.rh = NULL;
+                subreq->u.pack_urh2d.events = NULL;
+            }
+        }
+    } else if (puptype == YAKSURI_PUPTYPE__UNPACK) {
+        if (inattr.type == YAKSUR_PTR_TYPE__GPU) {
+            if (outattr.type == YAKSUR_PTR_TYPE__GPU) {
+                subreq->kind = YAKSURI_SUBREQ_KIND__UNPACK_D2D_IPC;
+                subreq->u.unpack_d2d_ipc.dst_d = NULL;
+                subreq->u.unpack_d2d_ipc.events = NULL;
+            } else if (outattr.type == YAKSUR_PTR_TYPE__REGISTERED_HOST) {
+                subreq->kind = YAKSURI_SUBREQ_KIND__UNPACK_D2RH;
+                subreq->u.unpack_d2rh.rh = NULL;
+                subreq->u.unpack_d2rh.events = NULL;
+            } else if (outattr.type == YAKSUR_PTR_TYPE__UNREGISTERED_HOST) {
+                subreq->kind = YAKSURI_SUBREQ_KIND__UNPACK_D2URH;
+                subreq->u.unpack_d2urh.rh = NULL;
+                subreq->u.unpack_d2urh.events = NULL;
+            }
+        } else if (outattr.type == YAKSUR_PTR_TYPE__GPU) {
+            if (inattr.type == YAKSUR_PTR_TYPE__REGISTERED_HOST) {
+                subreq->kind = YAKSURI_SUBREQ_KIND__UNPACK_RH2D;
+                subreq->u.unpack_rh2d.dst_d = NULL;
+                subreq->u.unpack_rh2d.events = NULL;
+            } else if (inattr.type == YAKSUR_PTR_TYPE__UNREGISTERED_HOST) {
+                subreq->kind = YAKSURI_SUBREQ_KIND__UNPACK_URH2D;
+                subreq->u.unpack_urh2d.rh = NULL;
+                subreq->u.unpack_urh2d.dst_d = NULL;
+                subreq->u.unpack_urh2d.events = NULL;
+            }
+        }
     }
-    pthread_mutex_unlock(&progress_mutex);
+
+    subreq->state.inbuf = inbuf;
+    subreq->state.outbuf = outbuf;
+    subreq->state.count = count;
+    subreq->state.type = type;
+    subreq->state.info = info;
+    subreq->state.offset = 0;
+
+    enqueue_subreq(request, subreq);
 
   fn_exit:
     return rc;
@@ -407,6 +459,73 @@ static int free_subop(progress_subop_s * subop)
     goto fn_exit;
 }
 
+static int progress_subreq(yaksuri_subreq_s *subreq, int *done)
+{
+    int rc = YAKSA_SUCCESS;
+    int completed;
+
+    switch (subreq->kind) {
+    case YAKSURI_SUBREQ_KIND__DIRECT:
+        rc = yaksuri_global.gpudriver[id].info->event_query(subop->event, done);
+        YAKSU_ERR_CHECK(rc, fn_fail);
+        break;
+
+    case YAKSURI_SUBREQ_KIND__COPY_D2URH:
+    {
+        rc = yaksu_buffer_pool_elem_alloc(yaksuri_global.gpudriver[id].rh, &rh);
+        YAKSU_ERR_CHECK(rc, fn_fail);
+        break;
+    }
+
+    case YAKSURI_SUBREQ_KIND__COPY_URH2D:
+        break;
+
+    case YAKSURI_SUBREQ_KIND__PACK_D2D_IPC:
+        break;
+
+    case YAKSURI_SUBREQ_KIND__PACK_D2D_STAGED:
+        break;
+
+    case YAKSURI_SUBREQ_KIND__PACK_D2RH:
+        break;
+
+    case YAKSURI_SUBREQ_KIND__PACK_D2URH:
+        break;
+
+    case YAKSURI_SUBREQ_KIND__PACK_RH2D:
+        break;
+
+    case YAKSURI_SUBREQ_KIND__PACK_URH2D:
+        break;
+
+    case YAKSURI_SUBREQ_KIND__UNPACK_D2D_IPC:
+        break;
+
+    case YAKSURI_SUBREQ_KIND__UNPACK_D2D_STAGED:
+        break;
+
+    case YAKSURI_SUBREQ_KIND__UNPACK_D2RH:
+        break;
+
+    case YAKSURI_SUBREQ_KIND__UNPACK_D2URH:
+        break;
+
+    case YAKSURI_SUBREQ_KIND__UNPACK_RH2D:
+        break;
+
+    case YAKSURI_SUBREQ_KIND__UNPACK_URH2D:
+        break;
+
+    default:
+        assert(0);
+    }
+
+  fn_exit:
+    return rc;
+  fn_fail:
+    goto fn_exit;
+}
+
 int yaksuri_progress_poke(void)
 {
     int rc = YAKSA_SUCCESS;
@@ -419,8 +538,30 @@ int yaksuri_progress_poke(void)
     pthread_mutex_lock(&progress_mutex);
 
     /* if there's nothing to do, return */
-    if (progress_head == NULL)
+    if (HASH_COUNT(progress_list) == 0)
         goto fn_exit;
+
+    progress_elem_s *elem, *tmp;
+    HASH_ITER(hh, progress_list, elem, tmp) {
+        int alldone = 1;
+        yaksuri_subreq_s *subreq;
+        DL_FOREACH_SAFE(elem->request->subreqs, subreq) {
+            rc = progress_subreq(subreq, &done);
+            YAKSU_ERR_CHECK(rc, fn_fail);
+
+            if (done) {
+                DL_DELETE(elem->request->subreqs, subreq);
+                free(subreq);
+            } else {
+                alldone = 0;
+            }
+        }
+
+        if (alldone) {
+            HASH_DEL(progress_list, elem);
+            free(elem);
+        }
+    }
 
     /* the progress engine has three steps: (1) check for completions
      * and free up any held up resources; (2) if we don't have

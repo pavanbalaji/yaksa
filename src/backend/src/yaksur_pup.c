@@ -39,19 +39,6 @@ static int get_ptr_attr(const void *buf, yaksur_ptr_attr_s * ptrattr, yaksuri_gp
     goto fn_exit;
 }
 
-/*
- * In all of the "DIRECT" cases below, there are a few important
- * things to note:
- *
- *  1. We increment the completion counter only for the first
- *     incomplete request.  Future incomplete requests simply
- *     overwrite the event.
- *
- *  2. We use an increment instead of an atomic store, because some
- *     operations in this request might go through the progress engine
- *     (STAGED).
- */
-
 static int ipup(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type,
                 yaksi_info_s * info, yaksi_request_s * request, yaksuri_puptype_e puptype)
 {
@@ -79,8 +66,29 @@ static int ipup(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s *
         id = outbuf_gpudriver;
     }
 
+    /********************************************************************************/
+    /* There are three types of operations:
+     *
+     *   1. Blocking operations: these operations complete
+     *      immediately.  They do not need us to maintain any
+     *      resources or to maintain any state.
+     *
+     *   2. Direct operations: these are nonblocking operations, so we
+     *      do need to maintain some state, but they do not require
+     *      any additional resources (such as temporary buffers), so
+     *      the state is small.
+     *
+     *   3. Indirect operations: these are nonblocking operations that
+     *      need additional resources (such as temporary buffers).  We
+     *      maintain a full progress engine for such operations
+     *      because depending on the available resources, we might
+     *      issue them partially.
+     */
+    /********************************************************************************/
 
-    /* if this can be handled by the CPU, wrap it up */
+    /********************************************************************************/
+    /* Blocking operations */
+    /********************************************************************************/
     if (inattr.type != YAKSUR_PTR_TYPE__GPU && outattr.type != YAKSUR_PTR_TYPE__GPU) {
         bool is_supported;
         rc = yaksuri_seq_pup_is_supported(type, &is_supported);
@@ -115,48 +123,40 @@ static int ipup(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s *
         goto fn_exit;
     }
 
-
     request_backend->gpudriver_id = id;
     assert(yaksuri_global.gpudriver[id].info);
 
-    if (!type->is_contig || inattr.type == YAKSUR_PTR_TYPE__UNREGISTERED_HOST ||
-        outattr.type == YAKSUR_PTR_TYPE__UNREGISTERED_HOST ||
-        (inattr.type == YAKSUR_PTR_TYPE__GPU && outattr.type == YAKSUR_PTR_TYPE__GPU &&
-         inattr.device != outattr.device)) {
-        /* we need temporary buffers and pipelining; queue it up in
-         * the progress engine */
-        request_backend->kind = YAKSURI_REQUEST_KIND__STAGED;
 
-        rc = yaksuri_progress_enqueue(inbuf, outbuf, count, type, info, request,
-                                      inattr, outattr, puptype);
+    /********************************************************************************/
+    /* Direct operations. */
+    /********************************************************************************/
+
+    if (type->is_contig && inattr.type != YAKSUR_PTR_TYPE__UNREGISTERED_HOST &&
+        outattr.type != YAKSUR_PTR_TYPE__UNREGISTERED_HOST &&
+        (inattr.type != YAKSUR_PTR_TYPE__GPU || outattr.type != YAKSUR_PTR_TYPE__GPU ||
+         inattr.device == outattr.device)) {
+        void *event;
+        rc = yaksuri_global.gpudriver[id].info->ipack(inbuf, outbuf, count, type, info,
+                                                      &event);
         YAKSU_ERR_CHECK(rc, fn_fail);
 
-        rc = yaksuri_progress_poke();
-        YAKSU_ERR_CHECK(rc, fn_fail);
-    } else {
-        bool first_event = !request_backend->event;
-        if (puptype == YAKSURI_PUPTYPE__PACK) {
-            rc = yaksuri_global.gpudriver[id].info->ipack(inbuf, outbuf, count, type, info,
-                                                          &request_backend->event, NULL,
-                                                          inattr.device);
-            YAKSU_ERR_CHECK(rc, fn_fail);
-        } else {
-            rc = yaksuri_global.gpudriver[id].info->iunpack(inbuf, outbuf, count, type, info,
-                                                            &request_backend->event, NULL,
-                                                            inattr.device);
-            YAKSU_ERR_CHECK(rc, fn_fail);
-        }
+        yaksuri_progress_enqueue_direct(request, event);
 
-        if (first_event) {
-            yaksu_atomic_incr(&request->cc);
-        }
-
-        /* if the request kind was already set to STAGED, do not
-         * override it, as a part of the request could be staged */
-        if (request_backend->kind == YAKSURI_REQUEST_KIND__UNSET) {
-            request_backend->kind = YAKSURI_REQUEST_KIND__DIRECT;
-        }
+        goto fn_exit;
     }
+
+
+    /********************************************************************************/
+    /* Indirect operations. */
+    /********************************************************************************/
+
+    rc = yaksuri_progress_enqueue_indirect(inbuf, outbuf, count, type, info, request,
+                                           inattr, outattr, puptype);
+    YAKSU_ERR_CHECK(rc, fn_fail);
+
+    rc = yaksuri_progress_poke();
+    YAKSU_ERR_CHECK(rc, fn_fail);
+
 
   fn_exit:
     return rc;

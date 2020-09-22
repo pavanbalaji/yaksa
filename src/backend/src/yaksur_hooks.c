@@ -33,9 +33,11 @@ int yaksur_init_hook(void)
             continue;
 
         if (yaksuri_global.gpudriver[id].info) {
-            yaksuri_global.gpudriver[id].host.slab = NULL;
-            yaksuri_global.gpudriver[id].host.slab_head_offset = 0;
-            yaksuri_global.gpudriver[id].host.slab_tail_offset = 0;
+            rc = yaksu_buffer_pool_alloc(YAKSURI_TMPBUF_ELEM_SIZE, 1, YAKSURI_TMPBUF_NUM_ELEMS,
+                                         yaksuri_global.gpudriver[id].info->host_malloc,
+                                         yaksuri_global.gpudriver[id].info->host_free,
+                                         &yaksuri_global.gpudriver[id].tmpbuf_pool.host);
+            YAKSU_ERR_CHECK(rc, fn_fail);
 
             int ndevices;
             rc = yaksuri_global.gpudriver[id].info->get_num_devices(&ndevices);
@@ -44,9 +46,11 @@ int yaksur_init_hook(void)
             yaksuri_global.gpudriver[id].device = (yaksuri_slab_s *)
                 malloc(ndevices * sizeof(yaksuri_slab_s));
             for (int i = 0; i < ndevices; i++) {
-                yaksuri_global.gpudriver[id].device[i].slab = NULL;
-                yaksuri_global.gpudriver[id].device[i].slab_head_offset = 0;
-                yaksuri_global.gpudriver[id].device[i].slab_tail_offset = 0;
+                rc = yaksu_buffer_pool_alloc(YAKSURI_TMPBUF_ELEM_SIZE, 1, YAKSURI_TMPBUF_NUM_ELEMS,
+                                             yaksuri_global.gpudriver[id].info->gpu_malloc,
+                                             yaksuri_global.gpudriver[id].info->gpu_free,
+                                             &yaksuri_global.gpudriver[id].tmpbuf_pool.device[i]);
+                YAKSU_ERR_CHECK(rc, fn_fail);
             }
         }
     }
@@ -154,8 +158,8 @@ int yaksur_request_create_hook(yaksi_request_s * request)
     request->backend.priv = malloc(sizeof(yaksuri_request_s));
     yaksuri_request_s *backend = (yaksuri_request_s *) request->backend.priv;
 
-    backend->event = NULL;
-    backend->kind = YAKSURI_REQUEST_KIND__UNSET;
+    backend->gpudriver_id = YAKSURI_GPUDRIVER_ID__UNSET;
+    backend->subreqs = NULL;
 
     return rc;
 }
