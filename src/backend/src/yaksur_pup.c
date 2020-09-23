@@ -90,10 +90,10 @@ static int ipup(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s *
             rc = YAKSA_ERR__NOT_SUPPORTED;
         } else {
             if (puptype == YAKSURI_PUPTYPE__PACK) {
-                rc = yaksuri_seq_ipack(inbuf, outbuf, count, info, type);
+                rc = yaksuri_seq_ipack(inbuf, outbuf, count, type, info);
                 YAKSU_ERR_CHECK(rc, fn_fail);
             } else {
-                rc = yaksuri_seq_iunpack(inbuf, outbuf, count, info, type);
+                rc = yaksuri_seq_iunpack(inbuf, outbuf, count, type, info);
                 YAKSU_ERR_CHECK(rc, fn_fail);
             }
         }
@@ -136,14 +136,14 @@ static int ipup(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s *
     } else {
         bool first_event = !request_backend->event;
         if (puptype == YAKSURI_PUPTYPE__PACK) {
-            rc = yaksuri_global.gpudriver[id].info->ipack(inbuf, outbuf, count, type, NULL,
-                                                          inattr.device, info,
-                                                          &request_backend->event);
+            rc = yaksuri_global.gpudriver[id].info->ipack(inbuf, outbuf, count, type, info,
+                                                          &request_backend->event, NULL,
+                                                          inattr.device);
             YAKSU_ERR_CHECK(rc, fn_fail);
         } else {
-            rc = yaksuri_global.gpudriver[id].info->iunpack(inbuf, outbuf, count, type, NULL,
-                                                            inattr.device, info,
-                                                            &request_backend->event);
+            rc = yaksuri_global.gpudriver[id].info->iunpack(inbuf, outbuf, count, type, info,
+                                                            &request_backend->event, NULL,
+                                                            inattr.device);
             YAKSU_ERR_CHECK(rc, fn_fail);
         }
 
