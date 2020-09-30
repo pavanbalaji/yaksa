@@ -24,11 +24,11 @@ typedef enum yaksuri_pup_e {
 
 typedef struct {
     struct {
+        yaksur_gpudriver_info_s *info;
         struct {
             yaksu_buffer_pool_s host;
             yaksu_buffer_pool_s *device;
         } tmpbuf_pool;
-        yaksur_gpudriver_info_s *info;
     } gpudriver[YAKSURI_GPUDRIVER_ID__LAST];
 } yaksuri_global_s;
 extern yaksuri_global_s yaksuri_global;
@@ -36,7 +36,7 @@ extern yaksuri_global_s yaksuri_global;
 typedef struct yaksuri_chunk {
     yaksu_buffer_pool_s pool;
     void *buf;
-    void *event;
+    uintptr_t nelems;
 
     struct yaksuri_chunk *next;
     struct yaksuri_chunk *prev;
@@ -52,107 +52,56 @@ typedef struct yaksuri_event {
 typedef struct {
     const void *inbuf;
     void *outbuf;
-    uintptr_t count;
+    uintptr_t total_elems;
     yaksi_type_s * type;
     yaksi_info_s * info;
-    uintptr_t offset;
+    uintptr_t issued_elems;
+    uintptr_t completed_elems;
 } yaksuri_progress_state_s;
 
 typedef struct yaksuri_subreq {
-    enum {
-        YAKSURI_SUBREQ_KIND__DIRECT,
-
-        YAKSURI_SUBREQ_KIND__COPY_D2URH,
-        YAKSURI_SUBREQ_KIND__COPY_URH2D,
-
-        YAKSURI_SUBREQ_KIND__PACK_D2D_IPC,
-        YAKSURI_SUBREQ_KIND__PACK_D2D_STAGED,
-        YAKSURI_SUBREQ_KIND__PACK_D2RH,
-        YAKSURI_SUBREQ_KIND__PACK_D2URH,
-        YAKSURI_SUBREQ_KIND__PACK_RH2D,
-        YAKSURI_SUBREQ_KIND__PACK_URH2D,
-
-        YAKSURI_SUBREQ_KIND__UNPACK_D2D_IPC,
-        YAKSURI_SUBREQ_KIND__UNPACK_D2D_STAGED,
-        YAKSURI_SUBREQ_KIND__UNPACK_D2RH,
-        YAKSURI_SUBREQ_KIND__UNPACK_D2URH,
-        YAKSURI_SUBREQ_KIND__UNPACK_RH2D,
-        YAKSURI_SUBREQ_KIND__UNPACK_URH2D,
-    } kind;
+    yaksi_request_s *request;
 
     union {
         struct {
             void *event;
         } direct;
         struct {
-            yaksuri_chunk_s *rh;
+            yaksuri_progress_state_s state;
             yaksuri_event_s *events;
-        } copy_d2urh;
-        struct {
             yaksuri_chunk_s *rh;
-            yaksuri_event_s *events;
-        } copy_urh2d;
-        struct {
             yaksuri_chunk_s *src_d;
-            yaksuri_event_s *events;
-        } pack_d2d_ipc;
-        struct {
-            yaksuri_chunk_s *src_d;
-            yaksuri_chunk_s *rh;
-            yaksuri_event_s *events;
-        } pack_d2d_staged;
-        struct {
-            yaksuri_chunk_s *src_d;
-            yaksuri_event_s *events;
-        } pack_d2rh;
-        struct {
-            yaksuri_chunk_s *src_d;
-            yaksuri_chunk_s *rh;
-            yaksuri_event_s *events;
-        } pack_d2urh;
-        struct {
-            yaksuri_chunk_s *rh;
-            yaksuri_event_s *events;
-        } pack_rh2d;
-        struct {
-            yaksuri_chunk_s *rh;
-            yaksuri_event_s *events;
-        } pack_urh2d;
-        struct {
             yaksuri_chunk_s *dst_d;
-            yaksuri_event_s *events;
-        } unpack_d2d_ipc;
-        struct {
-            yaksuri_chunk_s *rh;
-            yaksuri_chunk_s *dst_d;
-            yaksuri_event_s *events;
-        } unpack_d2d_staged;
-        struct {
-            yaksuri_chunk_s *rh;
-            yaksuri_event_s *events;
-        } unpack_d2rh;
-        struct {
-            yaksuri_chunk_s *rh;
-            yaksuri_event_s *events;
-        } unpack_d2urh;
-        struct {
-            yaksuri_chunk_s *dst_d;
-            yaksuri_event_s *events;
-        } unpack_rh2d;
-        struct {
-            yaksuri_chunk_s *rh;
-            yaksuri_chunk_s *dst_d;
-            yaksuri_event_s *events;
-        } unpack_urh2d;
+        } indirect;
     } u;
-
-    yaksuri_progress_state_s state;
 
     struct yaksuri_subreq *next;
     struct yaksuri_subreq *prev;
 } yaksuri_subreq_s;
 
 typedef struct yaksuri_request {
+    enum {
+        YAKSURI_REQUEST_KIND__PACK_H2H,
+        YAKSURI_REQUEST_KIND__PACK_D2D_SINGLE,
+        YAKSURI_REQUEST_KIND__PACK_D2D_IPC,
+        YAKSURI_REQUEST_KIND__PACK_D2D_STAGED,
+        YAKSURI_REQUEST_KIND__PACK_D2RH,
+        YAKSURI_REQUEST_KIND__PACK_D2URH,
+        YAKSURI_REQUEST_KIND__PACK_RH2D,
+        YAKSURI_REQUEST_KIND__PACK_URH2D,
+
+        YAKSURI_REQUEST_KIND__UNPACK_H2H,
+        YAKSURI_REQUEST_KIND__UNPACK_D2D_SINGLE,
+        YAKSURI_REQUEST_KIND__UNPACK_D2D_IPC,
+        YAKSURI_REQUEST_KIND__UNPACK_D2D_STAGED,
+        YAKSURI_REQUEST_KIND__UNPACK_D2RH,
+        YAKSURI_REQUEST_KIND__UNPACK_D2URH,
+        YAKSURI_REQUEST_KIND__UNPACK_RH2D,
+        YAKSURI_REQUEST_KIND__UNPACK_URH2D,
+    } kind;
+
+    yaksur_ptr_attr_s inattr;
+    yaksur_ptr_attr_s outattr;
     yaksuri_gpudriver_id_e gpudriver_id;
     yaksuri_subreq_s *subreqs;
 } yaksuri_request_s;

@@ -21,7 +21,422 @@ typedef struct progress_elem_s {
 static progress_elem_s *progress_list = NULL;
 static pthread_mutex_t progress_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-#define TMPBUF_SLAB_SIZE  (16 * 1024 * 1024)
+static void enqueue_subreq(yaksuri_subreq_s *subreq)
+{
+    yaksi_request_s *request = subreq->request;
+    yaksuri_request_s *request_backend = (yaksuri_request_s *) subreq->request.backend.priv;
+
+    yaksu_atomic_incr(&request->cc);
+
+    pthread_mutex_lock(&progress_mutex);
+    DL_APPEND(request_backend->subreqs, subreq);
+
+    progress_elem_s *elem;
+    HASH_FIND_PTR(progress_list, &request, elem);
+    if (elem == NULL) {
+        elem = (progress_elem_s *) malloc(sizeof(progress_elem_s));
+        elem->request = request;
+        HASH_ADD_PTR(progress_list, request, elem);
+    }
+
+    pthread_mutex_unlock(&progress_mutex);
+}
+
+int yaksuri_progress_enqueue(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type,
+                             yaksi_info_s * info, yaksi_request_s * request)
+{
+    int rc = YAKSA_SUCCESS;
+    yaksuri_request_s *request_backend = (yaksuri_request_s *) request->backend.priv;
+
+    assert(request_backend->kind != YAKSURI_REQUEST_KIND__UNSET);
+    assert(request_backend->kind != YAKSURI_REQUEST_KIND__PACK_H2H);
+    assert(request_backend->kind != YAKSURI_REQUEST_KIND__UNPACK_H2H);
+
+    /********************************************************************************/
+    /* Direct subreqs */
+    /********************************************************************************/
+    if (request_backend->kind == YAKSURI_REQUEST_KIND__PACK_D2D_SINGLE ||
+        (type->is_contig && (request_backend->kind == YAKSURI_REQUEST_KIND__PACK_D2D_IPC ||
+                             request_backend->kind == YAKSURI_REQUEST_KIND__PACK_D2RH ||
+                             request_backend->kind == YAKSURI_REQUEST_KIND__PACK_RH2D))) {
+        yaksuri_subreq_s *subreq;
+        subreq = (yaksuri_subreq_s *) malloc(sizeof(yaksuri_subreq_s));
+
+        subreq->request = request;
+        rc = yaksuri_global.gpudriver[id].info->ipack(inbuf, outbuf, count, type, info,
+                                                      &subreq->u.direct.event);
+        YAKSU_ERR_CHECK(rc, fn_fail);
+
+        enqueue_subreq(subreq);
+        goto fn_exit;
+    } else if (request_backend->kind == YAKSURI_REQUEST_KIND__UNPACK_D2D_SINGLE ||
+               (type->is_contig && (request_backend->kind == YAKSURI_REQUEST_KIND__UNPACK_D2D_IPC ||
+                                    request_backend->kind == YAKSURI_REQUEST_KIND__UNPACK_D2RH ||
+                                    request_backend->kind == YAKSURI_REQUEST_KIND__UNPACK_RH2D))) {
+        yaksuri_subreq_s *subreq;
+        subreq = (yaksuri_subreq_s *) malloc(sizeof(yaksuri_subreq_s));
+
+        subreq->request = request;
+        rc = yaksuri_global.gpudriver[id].info->iunpack(inbuf, outbuf, count, type, info,
+                                                        &subreq->u.direct.event);
+        YAKSU_ERR_CHECK(rc, fn_fail);
+
+        enqueue_subreq(subreq);
+        goto fn_exit;
+    }
+
+    /********************************************************************************/
+    /* Indirect subreqs */
+    /********************************************************************************/
+    /* if we need to go through the progress engine, make sure we only
+     * take on types, where at least one count of the type fits into
+     * our temporary buffers. */
+    if (type->size > YAKSURI_TMPBUF_ELEM_SIZE) {
+        rc = YAKSA_ERR__NOT_SUPPORTED;
+        goto fn_exit;
+    }
+
+    yaksuri_subreq_s *subreq;
+    subreq = (yaksuri_subreq_s *) malloc(sizeof(yaksuri_subreq_s));
+
+    subreq->request = request;
+
+    subreq->u.indirect.state.inbuf = inbuf;
+    subreq->u.indirect.state.outbuf = outbuf;
+    subreq->u.indirect.state.total_elems = count;
+    subreq->u.indirect.state.type = type;
+    subreq->u.indirect.state.info = info;
+    subreq->u.indirect.state.issued_elems = 0;
+    subreq->u.indirect.state.completed_elems = 0;
+
+    subreq->u.indirect.events = NULL;
+    subreq->u.indirect.rh = NULL;
+    subreq->u.indirect.src_d = NULL;
+    subreq->u.indirect.dst_d = NULL;
+
+    enqueue_subreq(subreq);
+
+  fn_exit:
+    return rc;
+}
+
+#define FREE_CHUNK_HEAD(subreq, list, rc)                               \
+    do {                                                                \
+        yaksuri_chunk_s *chunk = list;                                  \
+                                                                        \
+        subreq->u.indirect.state.completed_elems += chunk->nelems;      \
+        DL_DELETE(list, chunk);                                         \
+                                                                        \
+        rc = yaksu_buffer_pool_elem_free(chunk->pool, chunk->buf);      \
+        YAKSU_ERR_CHECK(rc, fn_fail);                                   \
+                                                                        \
+        free(chunk);                                                    \
+    } while (0)
+
+static int seq_copy_from_chunk(yaksuri_subreq_s *subreq, yaksuri_chunk_s *chunk)
+{
+    const void *sbuf = (const void *) ((uintptr_t) chunk->buf +
+                                       subreq->u.indirect.state.completed_elems *
+                                       subreq->u.indirect.state.type->extent);
+    void *dbuf = (void *) ((uintptr_t) subreq->u.indirect.state.outbuf +
+                           subreq->u.indirect.state.completed_elems *
+                           subreq->u.indirect.state.type->size);
+    rc = yaksuri_seq_ipack(sbuf, dbuf, chunk->nelems, subreq->u.indirect.state.type,
+                           subreq->u.indirect.state.info);
+    YAKSU_ERR_CHECK(rc, fn_fail);
+
+  fn_exit:
+    return rc;
+  fn_fail:
+    goto fn_exit;
+}
+
+static int seq_pack_to_chunk(yaksuri_subreq_s *subreq, yaksuri_chunk_s *chunk)
+{
+    const void *sbuf = (const void *) ((uintptr_t) subreq->u.indirect.state.inbuf +
+                                       subreq->u.indirect.state.completed_elems *
+                                       subreq->u.indirect.state.type->extent);
+    void *dbuf = (void *) ((uintptr_t) subreq->u.indirect.state.outbuf +
+                           subreq->u.indirect.state.completed_elems *
+                           subreq->u.indirect.state.type->size);
+    rc = yaksuri_seq_ipack(sbuf, dbuf, chunk->nelems, subreq->u.indirect.state.type,
+                           subreq->u.indirect.state.info);
+    YAKSU_ERR_CHECK(rc, fn_fail);
+
+  fn_exit:
+    return rc;
+  fn_fail:
+    goto fn_exit;
+}
+
+static int seq_unpack_chunk(yaksuri_subreq_s *subreq, yaksuri_chunk_s *chunk)
+{
+    const void *sbuf = (const void *) ((uintptr_t) chunk->buf +
+                                       subreq->u.indirect.state.completed_elems *
+                                       subreq->u.indirect.state.type->size);
+    void *dbuf = (void *) ((uintptr_t) subreq->u.indirect.state.outbuf +
+                           subreq->u.indirect.state.completed_elems *
+                           subreq->u.indirect.state.type->extent);
+    rc = yaksuri_seq_iunpack(sbuf, dbuf, chunk->nelems, subreq->u.indirect.state.type,
+                             subreq->u.indirect.state.info);
+    YAKSU_ERR_CHECK(rc, fn_fail);
+
+  fn_exit:
+    return rc;
+  fn_fail:
+    goto fn_exit;
+}
+
+static int progress_subreq(yaksuri_subreq_s *subreq)
+{
+    int rc = YAKSA_SUCCESS;
+    yaksuri_gpudriver_id_e id = ((yaksuri_request_s *) subreq->request.backend.priv)->gpudriver_id;
+    yaksuri_request_s *request_backend = (yaksuri_request_s *) subreq->request->backend.priv;
+
+    /********************************************************************************/
+    /* Direct subreqs */
+    /********************************************************************************/
+    if (request_backend->kind == YAKSURI_REQUEST_KIND__PACK_D2D_SINGLE ||
+        request_backend->kind == YAKSURI_REQUEST_KIND__UNPACK_D2D_SINGLE ||
+        (type->is_contig && (request_backend->kind == YAKSURI_REQUEST_KIND__PACK_D2D_IPC ||
+                             request_backend->kind == YAKSURI_REQUEST_KIND__PACK_D2RH ||
+                             request_backend->kind == YAKSURI_REQUEST_KIND__PACK_RH2D ||
+                             request_backend->kind == YAKSURI_REQUEST_KIND__UNPACK_D2D_IPC ||
+                             request_backend->kind == YAKSURI_REQUEST_KIND__UNPACK_D2RH ||
+                             request_backend->kind == YAKSURI_REQUEST_KIND__UNPACK_RH2D))) {
+        int completed;
+        rc = yaksuri_global.gpudriver[id].info->event_query(subreq->u.direct.event, &completed);
+        YAKSU_ERR_CHECK(rc, fn_fail);
+
+        if (completed) {
+            DL_DELETE(request_backend->subreqs, subreq);
+            free(subreq);
+        }
+
+        goto fn_exit;
+    }
+
+    /********************************************************************************/
+    /* Indirect subreqs */
+    /********************************************************************************/
+    /* see if the existing events have completed */
+    void *event;
+    DL_FOREACH_SAFE(subreq->u.indirect.events, event) {
+        int completed;
+        rc = yaksuri_global.gpudriver[id].info->event_query(event->event, &completed);
+        YAKSU_ERR_CHECK(rc, fn_fail);
+
+        if (completed) {
+            rc = yaksuri_global.gpudriver[id].info->event_destroy(event->event);
+            YAKSU_ERR_CHECK(rc, fn_fail);
+
+            DL_DELETE(subreq->u.indirect.events, event);
+            free(event);
+
+            switch (request_backend->kind) {
+            case YAKSURI_REQUEST_KIND__COPY_D2URH:
+            {
+                yaksuri_chunk_s *chunk = subreq->u.indirect.rh;
+
+                const void *sbuf = (const void *) ((uintptr_t) chunk->buf +
+                                                   subreq->u.indirect.state.completed_elems *
+                                                   subreq->u.indirect.state.type->extent);
+                void *dbuf = (void *) ((uintptr_t) subreq->u.indirect.state.outbuf +
+                                       subreq->u.indirect.state.completed_elems *
+                                       subreq->u.indirect.state.type->size);
+                rc = yaksuri_seq_ipack(sbuf, dbuf, chunk->nelems, subreq->u.indirect.state.type,
+                                       subreq->u.indirect.state.info);
+                YAKSU_ERR_CHECK(rc, fn_fail);
+
+                FREE_CHUNK_HEAD(subreq, subreq->u.indirect.rh, rc);
+                break;
+            }
+
+            case YAKSURI_REQUEST_KIND__COPY_URH2D:
+            case YAKSURI_REQUEST_KIND__PACK_RH2D:
+            case YAKSURI_REQUEST_KIND__PACK_URH2D:
+                FREE_CHUNK_HEAD(subreq->u.indirect.rh, rc);
+                break;
+
+            case YAKSURI_REQUEST_KIND__UNPACK_D2RH:
+            case YAKSURI_REQUEST_KIND__UNPACK_D2URH:
+            {
+                rc = seq_unpack_from_chunk(subreq, subreq->u.indirect.rh);
+                YAKSU_ERR_CHECK(rc, fn_fail);
+
+                FREE_CHUNK_HEAD(subreq, subreq->u.indirect.rh, rc);
+                break;
+            }
+
+            case YAKSURI_REQUEST_KIND__PACK_D2D_IPC:
+            case YAKSURI_REQUEST_KIND__PACK_D2RH:
+                FREE_CHUNK_HEAD(subreq, subreq->u.indirect.src_d, rc);
+                break;
+
+            case YAKSURI_REQUEST_KIND__UNPACK_D2D_IPC:
+            case YAKSURI_REQUEST_KIND__UNPACK_RH2D:
+                FREE_CHUNK_HEAD(subreq, subreq->u.indirect.dst_d, rc);
+                break;
+
+            case YAKSURI_REQUEST_KIND__PACK_D2URH:
+            {
+                rc = seq_pack_to_chunk(subreq, subreq->u.indirect.rh);
+                YAKSU_ERR_CHECK(rc, fn_fail);
+
+                FREE_CHUNK_HEAD(subreq, subreq->u.indirect.rh, rc);
+                FREE_CHUNK_HEAD(subreq, subreq->u.indirect.src_d, rc);
+                break;
+            }
+
+            case YAKSURI_REQUEST_KIND__PACK_D2D_STAGED:
+                FREE_CHUNK_HEAD(subreq->u.indirect.rh, rc);
+                FREE_CHUNK_HEAD(subreq->u.indirect.src_d, rc);
+                break;
+
+            case YAKSURI_REQUEST_KIND__UNPACK_D2D_STAGED:
+            case YAKSURI_REQUEST_KIND__UNPACK_URH2D:
+                FREE_CHUNK_HEAD(subreq->u.indirect.rh, rc);
+                FREE_CHUNK_HEAD(subreq->u.indirect.dst_d, rc);
+                break;
+
+            default:
+                assert(0);
+            }
+        } else {
+            /* if an event has not completed, we do not look at any
+             * more events on this request */
+            break;
+        }
+    }
+
+    /* if all the events have completed and all of the operations have
+     * been issued, we are done with this subreq */
+    if (subreq->state.offset == subreq->state.type->size &&
+        subreq->u.indirect.events == NULL) {
+        /* we should not have any chunks queued up, if there are no
+         * more events pending */
+        assert(subreq->u.indirect.rh == NULL);
+        assert(subreq->u.indirect.src_d == NULL);
+        assert(subreq->u.indirect.dst_d == NULL);
+
+        yaksuri_request_s *request = (yaksuri_request_s *) subreq->request.backend.priv;
+        DL_DELETE(request->subreqs, subreq);
+        free(subreq);
+
+        goto fn_exit;
+    } else if (subreq->state.offset == subreq->state.type->size) {
+        /* if there are pending events, but all operations have been
+         * issued, we can return from this progress function. */
+        goto fn_exit;
+    }
+
+    /* the below code deals with the case where there are more chunks
+     * remaining that need to be issued */
+
+    switch (subreq->kind) {
+    case YAKSURI_REQUEST_KIND__COPY_D2URH:
+    {
+        while (1) {
+            if (subreq->state.offset == subreq->state.type->size)
+                break;
+
+            void *rh;
+            rc = yaksu_buffer_pool_elem_alloc(yaksuri_global.gpudriver[id].tmpbuf_pool.host, &rh);
+            YAKSU_ERR_CHECK(rc, fn_fail);
+
+            if (rh == NULL)
+                break;
+
+            yaksuri_chunk_s *chunk;
+            chunk = (yaksuri_chunk_s *) malloc(sizeof(yaksuri_chunk_s));
+            chunk->pool = yaksuri_global.gpudriver[id].tmpbuf_pool.host;
+            chunk->buf = rh;
+
+            yaksuri_event_s *event;
+            event = (yaksuri_event_s *) malloc(sizeof(yaksuri_event_s));
+            event->event = NULL;
+
+            rc = yaksuri_global.gpudriver[id].info->event_create(&event->event);
+            YAKSU_ERR_CHECK(rc, fn_fail);
+
+            DL_APPEND(subreq->u.indirect.rh, chunk);
+            DL_APPEND(subreq->u.indirect.events, event);
+
+            /* check how many elements we can pack */
+            uintptr_t count = YAKSURI_TMPBUF_ELEM_SIZE / subreq->u.indirect.state.type->size;
+            assert(count);
+
+            const void *sbuf = (const void *) ((uintptr_t) subreq->u.indirect.state.inbuf +
+                                               subreq->u.indirect.state.issued_count *
+                                               subreq->u.indirect.state.type->extent);
+            void *dbuf = (void *) ((uintptr_t) subreq->u.indirect.state.outbuf +
+                                   subreq->u.indirect.state.issued_count *
+                                   subreq->u.indirect.state.type->size);
+            rc = yaksuri_global.gpudriver[id].info->ipack(sbuf, dbuf, count,
+                                                          subreq->u.indirect.state.type,
+                                                          subreq->u.indirect.state.info, &event->event,
+                                                          inattr.device);
+            YAKSU_ERR_CHECK(rc, fn_fail);
+        }
+
+        break;
+    }
+
+    case YAKSURI_REQUEST_KIND__COPY_URH2D:
+        break;
+
+    case YAKSURI_REQUEST_KIND__PACK_D2D_IPC:
+        break;
+
+    case YAKSURI_REQUEST_KIND__PACK_D2D_STAGED:
+        break;
+
+    case YAKSURI_REQUEST_KIND__PACK_D2RH:
+        break;
+
+    case YAKSURI_REQUEST_KIND__PACK_D2URH:
+        break;
+
+    case YAKSURI_REQUEST_KIND__PACK_RH2D:
+        break;
+
+    case YAKSURI_REQUEST_KIND__PACK_URH2D:
+        break;
+
+    case YAKSURI_REQUEST_KIND__UNPACK_D2D_IPC:
+        break;
+
+    case YAKSURI_REQUEST_KIND__UNPACK_D2D_STAGED:
+        break;
+
+    case YAKSURI_REQUEST_KIND__UNPACK_D2RH:
+        break;
+
+    case YAKSURI_REQUEST_KIND__UNPACK_D2URH:
+        break;
+
+    case YAKSURI_REQUEST_KIND__UNPACK_RH2D:
+        break;
+
+    case YAKSURI_REQUEST_KIND__UNPACK_URH2D:
+        break;
+
+    default:
+        assert(0);
+    }
+
+  fn_exit:
+    return rc;
+  fn_fail:
+    goto fn_exit;
+}
+
+
+
+
+
+
+/********* OLD CODE ***********/
 
 /* the dequeue function is not thread safe, as it is always called
  * from within the progress engine */
@@ -49,136 +464,6 @@ static int progress_dequeue(progress_elem_s * elem)
     yaksu_atomic_decr(&elem->request->cc);
     free(elem);
 
-    return rc;
-}
-
-static void enqueue_subreq(yaksi_request_s * request, yaksuri_subreq_s *subreq)
-{
-    yaksu_atomic_incr(&request->cc);
-
-    pthread_mutex_lock(&progress_mutex);
-    DL_APPEND(request->subreqs, subreq);
-
-    progress_elem_s *elem;
-    HASH_FIND_PTR(progress_list, &request, elem);
-    if (elem == NULL) {
-        elem = (progress_elem_s *) malloc(sizeof(progress_elem_s));
-        elem->request = request;
-        HASH_ADD_PTR(progress_list, request, elem);
-    }
-
-    pthread_mutex_unlock(&progress_mutex);
-}
-
-int yaksuri_progress_enqueue_direct(yaksi_request_s * request, void *event)
-{
-    int rc = YAKSA_SUCCESS;
-
-    yaksuri_subreq_s *subreq;
-    subreq = (yaksuri_subreq_s *) malloc(sizeof(yaksuri_subreq_s));
-
-    subreq->kind = YAKSURI_SUBREQ_KIND__DIRECT;
-    subreq->u.direct.event = event;
-
-    enqueue_subreq(request, subreq);
-
-    return rc;
-}
-
-int yaksuri_progress_enqueue_indirect(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type,
-                                      yaksi_info_s * info, yaksi_request_s * request,
-                                      yaksur_ptr_attr_s inattr, yaksur_ptr_attr_s outattr,
-                                      yaksuri_puptype_e puptype)
-{
-    int rc = YAKSA_SUCCESS;
-
-    /* if we need to go through the progress engine, make sure we only
-     * take on types, where at least one count of the type fits into
-     * our temporary buffers. */
-    if (type->size > TMPBUF_SLAB_SIZE) {
-        rc = YAKSA_ERR__NOT_SUPPORTED;
-        goto fn_exit;
-    }
-
-    yaksuri_subreq_s *subreq;
-    subreq = (yaksuri_subreq_s *) malloc(sizeof(yaksuri_subreq_s));
-
-    if (type->contig) {
-        if (inattr.type == YAKSUR_PTR_TYPE__GPU) {
-            subreq->kind = YAKSURI_SUBREQ_KIND__COPY_D2URH;
-            subreq->u.copy_d2urh.rh = NULL;
-            subreq->u.copy_d2urh.events = NULL;
-        } else if (outattr.type == YAKSUR_PTR_TYPE__GPU) {
-            subreq->kind = YAKSURI_SUBREQ_KIND__COPY_URH2D;
-            subreq->u.copy_urh2d.rh = NULL;
-            subreq->u.copy_urh2d.events = NULL;
-        }
-    } else if (puptype == YAKSURI_PUPTYPE__PACK) {
-        if (inattr.type == YAKSUR_PTR_TYPE__GPU) {
-            if (outattr.type == YAKSUR_PTR_TYPE__GPU) {
-                subreq->kind = YAKSURI_SUBREQ_KIND__PACK_D2D_IPC;
-                subreq->u.pack_d2d_ipc.src_d = NULL;
-                subreq->u.pack_d2d_ipc.events = NULL;
-            } else if (outattr.type == YAKSUR_PTR_TYPE__REGISTERED_HOST) {
-                subreq->kind = YAKSURI_SUBREQ_KIND__PACK_D2RH;
-                subreq->u.pack_d2rh.src_d = NULL;
-                subreq->u.pack_d2rh.events = NULL;
-            } else if (outattr.type == YAKSUR_PTR_TYPE__UNREGISTERED_HOST) {
-                subreq->kind = YAKSURI_SUBREQ_KIND__PACK_D2URH;
-                subreq->u.pack_d2urh.src_d = NULL;
-                subreq->u.pack_d2urh.rh = NULL;
-                subreq->u.pack_d2urh.events = NULL;
-            }
-        } else if (outattr.type == YAKSUR_PTR_TYPE__GPU) {
-            if (inattr.type == YAKSUR_PTR_TYPE__REGISTERED_HOST) {
-                subreq->kind = YAKSURI_SUBREQ_KIND__PACK_RH2D;
-                subreq->u.pack_rh2d.rh = NULL;
-                subreq->u.pack_rh2d.events = NULL;
-            } else if (inattr.type == YAKSUR_PTR_TYPE__UNREGISTERED_HOST) {
-                subreq->kind = YAKSURI_SUBREQ_KIND__PACK_URH2D;
-                subreq->u.pack_urh2d.rh = NULL;
-                subreq->u.pack_urh2d.events = NULL;
-            }
-        }
-    } else if (puptype == YAKSURI_PUPTYPE__UNPACK) {
-        if (inattr.type == YAKSUR_PTR_TYPE__GPU) {
-            if (outattr.type == YAKSUR_PTR_TYPE__GPU) {
-                subreq->kind = YAKSURI_SUBREQ_KIND__UNPACK_D2D_IPC;
-                subreq->u.unpack_d2d_ipc.dst_d = NULL;
-                subreq->u.unpack_d2d_ipc.events = NULL;
-            } else if (outattr.type == YAKSUR_PTR_TYPE__REGISTERED_HOST) {
-                subreq->kind = YAKSURI_SUBREQ_KIND__UNPACK_D2RH;
-                subreq->u.unpack_d2rh.rh = NULL;
-                subreq->u.unpack_d2rh.events = NULL;
-            } else if (outattr.type == YAKSUR_PTR_TYPE__UNREGISTERED_HOST) {
-                subreq->kind = YAKSURI_SUBREQ_KIND__UNPACK_D2URH;
-                subreq->u.unpack_d2urh.rh = NULL;
-                subreq->u.unpack_d2urh.events = NULL;
-            }
-        } else if (outattr.type == YAKSUR_PTR_TYPE__GPU) {
-            if (inattr.type == YAKSUR_PTR_TYPE__REGISTERED_HOST) {
-                subreq->kind = YAKSURI_SUBREQ_KIND__UNPACK_RH2D;
-                subreq->u.unpack_rh2d.dst_d = NULL;
-                subreq->u.unpack_rh2d.events = NULL;
-            } else if (inattr.type == YAKSUR_PTR_TYPE__UNREGISTERED_HOST) {
-                subreq->kind = YAKSURI_SUBREQ_KIND__UNPACK_URH2D;
-                subreq->u.unpack_urh2d.rh = NULL;
-                subreq->u.unpack_urh2d.dst_d = NULL;
-                subreq->u.unpack_urh2d.events = NULL;
-            }
-        }
-    }
-
-    subreq->state.inbuf = inbuf;
-    subreq->state.outbuf = outbuf;
-    subreq->state.count = count;
-    subreq->state.type = type;
-    subreq->state.info = info;
-    subreq->state.offset = 0;
-
-    enqueue_subreq(request, subreq);
-
-  fn_exit:
     return rc;
 }
 
@@ -452,73 +737,6 @@ static int free_subop(progress_subop_s * subop)
     }
 
     free(subop);
-
-  fn_exit:
-    return rc;
-  fn_fail:
-    goto fn_exit;
-}
-
-static int progress_subreq(yaksuri_subreq_s *subreq, int *done)
-{
-    int rc = YAKSA_SUCCESS;
-    int completed;
-
-    switch (subreq->kind) {
-    case YAKSURI_SUBREQ_KIND__DIRECT:
-        rc = yaksuri_global.gpudriver[id].info->event_query(subop->event, done);
-        YAKSU_ERR_CHECK(rc, fn_fail);
-        break;
-
-    case YAKSURI_SUBREQ_KIND__COPY_D2URH:
-    {
-        rc = yaksu_buffer_pool_elem_alloc(yaksuri_global.gpudriver[id].rh, &rh);
-        YAKSU_ERR_CHECK(rc, fn_fail);
-        break;
-    }
-
-    case YAKSURI_SUBREQ_KIND__COPY_URH2D:
-        break;
-
-    case YAKSURI_SUBREQ_KIND__PACK_D2D_IPC:
-        break;
-
-    case YAKSURI_SUBREQ_KIND__PACK_D2D_STAGED:
-        break;
-
-    case YAKSURI_SUBREQ_KIND__PACK_D2RH:
-        break;
-
-    case YAKSURI_SUBREQ_KIND__PACK_D2URH:
-        break;
-
-    case YAKSURI_SUBREQ_KIND__PACK_RH2D:
-        break;
-
-    case YAKSURI_SUBREQ_KIND__PACK_URH2D:
-        break;
-
-    case YAKSURI_SUBREQ_KIND__UNPACK_D2D_IPC:
-        break;
-
-    case YAKSURI_SUBREQ_KIND__UNPACK_D2D_STAGED:
-        break;
-
-    case YAKSURI_SUBREQ_KIND__UNPACK_D2RH:
-        break;
-
-    case YAKSURI_SUBREQ_KIND__UNPACK_D2URH:
-        break;
-
-    case YAKSURI_SUBREQ_KIND__UNPACK_RH2D:
-        break;
-
-    case YAKSURI_SUBREQ_KIND__UNPACK_URH2D:
-        break;
-
-    default:
-        assert(0);
-    }
 
   fn_exit:
     return rc;
