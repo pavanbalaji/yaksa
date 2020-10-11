@@ -189,8 +189,8 @@ int yaksur_ipack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s 
     goto fn_exit;
 }
 
-int yaksur_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type,
-                   yaksi_info_s * info, yaksi_request_s * request)
+int yaksur_iacc_unpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type,
+                       yaksa_op_t op, yaksi_info_s * info, yaksi_request_s * request)
 {
     int rc = YAKSA_SUCCESS;
     yaksur_ptr_attr_s inattr, outattr;
@@ -226,7 +226,7 @@ int yaksur_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_
         if (!is_supported) {
             rc = YAKSA_ERR__NOT_SUPPORTED;
         } else {
-            rc = yaksuri_seq_iunpack(inbuf, outbuf, count, info, type);
+            rc = yaksuri_seq_iacc_unpack(inbuf, outbuf, count, info, type);
             YAKSU_ERR_CHECK(rc, fn_fail);
         }
         goto fn_exit;
@@ -255,9 +255,9 @@ int yaksur_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_
         inattr.device == outattr.device) {
         /* gpu-to-gpu copies do not need temporary buffers */
         bool first_event = !request_backend->event;
-        rc = yaksuri_global.gpudriver[id].info->iunpack(inbuf, outbuf, count, type, NULL,
-                                                        inattr.device, info,
-                                                        &request_backend->event);
+        rc = yaksuri_global.gpudriver[id].info->iacc_unpack(inbuf, outbuf, count, type, NULL,
+                                                            inattr.device, info,
+                                                            &request_backend->event);
         YAKSU_ERR_CHECK(rc, fn_fail);
 
         if (first_event) {
@@ -275,9 +275,9 @@ int yaksur_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_
          * temporary buffers either, if the host buffer is registered
          * and the type is contiguous */
         bool first_event = !request_backend->event;
-        rc = yaksuri_global.gpudriver[id].info->iunpack(inbuf, outbuf, count, type, NULL,
-                                                        inattr.device, info,
-                                                        &request_backend->event);
+        rc = yaksuri_global.gpudriver[id].info->iacc_unpack(inbuf, outbuf, count, type, NULL,
+                                                            inattr.device, info,
+                                                            &request_backend->event);
         YAKSU_ERR_CHECK(rc, fn_fail);
 
         if (first_event) {
@@ -295,9 +295,9 @@ int yaksur_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_
          * temporary buffers either, if the host buffer is registered
          * and the type is contiguous */
         bool first_event = !request_backend->event;
-        rc = yaksuri_global.gpudriver[id].info->iunpack(inbuf, outbuf, count, type, NULL,
-                                                        outattr.device, info,
-                                                        &request_backend->event);
+        rc = yaksuri_global.gpudriver[id].info->iacc_unpack(inbuf, outbuf, count, type, NULL,
+                                                            outattr.device, info,
+                                                            &request_backend->event);
         YAKSU_ERR_CHECK(rc, fn_fail);
 
         if (first_event) {

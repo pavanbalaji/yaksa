@@ -14,25 +14,25 @@
  *  1. Skip the first few blocks till we reach a block that can
  *  contribute some data to our unpacking.
  *
- *  2. Partial unpack the next block.  Once unpacked, if either the
- *  unpack buffer is full or there's data left over in this block,
+ *  2. Partial acc_unpack the next block.  Once unpacked, if either the
+ *  acc_unpack buffer is full or there's data left over in this block,
  *  return.
  *
- *  3. Perform a full unpack of the next few blocks.
+ *  3. Perform a full acc_unpack of the next few blocks.
  *
- *  4. Partial unpack the next block.  Once unpacked, if either the
- *  unpack buffer is full or there's data left over in this block,
+ *  4. Partial acc_unpack the next block.  Once unpacked, if either the
+ *  acc_unpack buffer is full or there's data left over in this block,
  *  return.
  */
 
 static int unpack_sub_hvector(const void *inbuf, uintptr_t insize, void *outbuf,
                               yaksi_type_s * type, uintptr_t outoffset,
-                              uintptr_t * actual_unpack_bytes, yaksi_info_s * info,
+                              uintptr_t * actual_unpack_bytes, yaksa_op_t op, yaksi_info_s * info,
                               yaksi_request_s * request)
 {
     int rc = YAKSA_SUCCESS;
 
-    /* make sure we have something left to unpack after the offset */
+    /* make sure we have something left to acc_unpack after the offset */
     assert(outoffset < type->size);
 
     const char *sbuf = (const char *) inbuf;
@@ -58,16 +58,16 @@ static int unpack_sub_hvector(const void *inbuf, uintptr_t insize, void *outbuf,
                                                bytes_in_block - remoffset);
 
         uintptr_t tmp_actual_unpack_bytes;
-        rc = yaksi_iunpack(sbuf, tmp_unpack_bytes, dbuf, type->u.hvector.blocklength,
-                           type->u.hvector.child, remoffset, &tmp_actual_unpack_bytes, info,
-                           request);
+        rc = yaksi_iacc_unpack(sbuf, tmp_unpack_bytes, dbuf, type->u.hvector.blocklength,
+                               type->u.hvector.child, remoffset, &tmp_actual_unpack_bytes, op, info,
+                               request);
         YAKSU_ERR_CHECK(rc, fn_fail);
 
         rem_unpack_bytes -= tmp_actual_unpack_bytes;
         *actual_unpack_bytes += tmp_actual_unpack_bytes;
 
         if (rem_unpack_bytes == 0 || tmp_actual_unpack_bytes == 0) {
-            /* if we are out of unpack buffer space, return */
+            /* if we are out of acc_unpack buffer space, return */
             goto fn_exit;
         }
 
@@ -81,8 +81,8 @@ static int unpack_sub_hvector(const void *inbuf, uintptr_t insize, void *outbuf,
     uintptr_t numblocks;
     numblocks = rem_unpack_bytes / bytes_in_block;
     for (int i = 0; i < numblocks; i++) {
-        rc = yaksi_iunpack_backend(sbuf, dbuf, type->u.hvector.blocklength, type->u.hvector.child,
-                                   info, request);
+        rc = yaksi_iacc_unpack_backend(sbuf, dbuf, type->u.hvector.blocklength,
+                                       type->u.hvector.child, op, info, request);
         YAKSU_ERR_CHECK(rc, fn_fail);
 
         rem_unpack_bytes -= bytes_in_block;
@@ -97,9 +97,9 @@ static int unpack_sub_hvector(const void *inbuf, uintptr_t insize, void *outbuf,
     if (rem_unpack_bytes) {
         uintptr_t tmp_actual_unpack_bytes;
 
-        rc = yaksi_iunpack(sbuf, rem_unpack_bytes, dbuf, type->u.hvector.blocklength,
-                           type->u.hvector.child, remoffset, &tmp_actual_unpack_bytes, info,
-                           request);
+        rc = yaksi_iacc_unpack(sbuf, rem_unpack_bytes, dbuf, type->u.hvector.blocklength,
+                               type->u.hvector.child, remoffset, &tmp_actual_unpack_bytes, op, info,
+                               request);
         YAKSU_ERR_CHECK(rc, fn_fail);
 
         *actual_unpack_bytes += tmp_actual_unpack_bytes;
@@ -113,12 +113,12 @@ static int unpack_sub_hvector(const void *inbuf, uintptr_t insize, void *outbuf,
 
 static int unpack_sub_blkhindx(const void *inbuf, uintptr_t insize, void *outbuf,
                                yaksi_type_s * type, uintptr_t outoffset,
-                               uintptr_t * actual_unpack_bytes, yaksi_info_s * info,
+                               uintptr_t * actual_unpack_bytes, yaksa_op_t op, yaksi_info_s * info,
                                yaksi_request_s * request)
 {
     int rc = YAKSA_SUCCESS;
 
-    /* make sure we have something left to unpack after the offset */
+    /* make sure we have something left to acc_unpack after the offset */
     assert(outoffset < type->size);
 
     const char *sbuf = (const char *) inbuf;
@@ -146,9 +146,9 @@ static int unpack_sub_blkhindx(const void *inbuf, uintptr_t insize, void *outbuf
 
         uintptr_t tmp_actual_unpack_bytes;
         dbuf = (char *) outbuf + type->u.blkhindx.array_of_displs[blockid++];
-        rc = yaksi_iunpack(sbuf, tmp_unpack_bytes, dbuf, type->u.blkhindx.blocklength,
-                           type->u.blkhindx.child, remoffset, &tmp_actual_unpack_bytes, info,
-                           request);
+        rc = yaksi_iacc_unpack(sbuf, tmp_unpack_bytes, dbuf, type->u.blkhindx.blocklength,
+                               type->u.blkhindx.child, remoffset, &tmp_actual_unpack_bytes, op,
+                               info, request);
         YAKSU_ERR_CHECK(rc, fn_fail);
         sbuf += tmp_actual_unpack_bytes;
 
@@ -156,7 +156,7 @@ static int unpack_sub_blkhindx(const void *inbuf, uintptr_t insize, void *outbuf
         *actual_unpack_bytes += tmp_actual_unpack_bytes;
 
         if (rem_unpack_bytes == 0 || tmp_actual_unpack_bytes == 0) {
-            /* if we are out of unpack buffer space, return */
+            /* if we are out of acc_unpack buffer space, return */
             goto fn_exit;
         }
 
@@ -169,8 +169,8 @@ static int unpack_sub_blkhindx(const void *inbuf, uintptr_t insize, void *outbuf
     numblocks = rem_unpack_bytes / bytes_in_block;
     for (int i = 0; i < numblocks; i++) {
         dbuf = (char *) outbuf + type->u.blkhindx.array_of_displs[blockid++];
-        rc = yaksi_iunpack_backend(sbuf, dbuf, type->u.blkhindx.blocklength, type->u.blkhindx.child,
-                                   info, request);
+        rc = yaksi_iacc_unpack_backend(sbuf, dbuf, type->u.blkhindx.blocklength,
+                                       type->u.blkhindx.child, op, info, request);
         YAKSU_ERR_CHECK(rc, fn_fail);
         sbuf += bytes_in_block;
 
@@ -184,9 +184,9 @@ static int unpack_sub_blkhindx(const void *inbuf, uintptr_t insize, void *outbuf
         uintptr_t tmp_actual_unpack_bytes;
 
         dbuf = (char *) outbuf + type->u.blkhindx.array_of_displs[blockid++];
-        rc = yaksi_iunpack(sbuf, rem_unpack_bytes, dbuf, type->u.blkhindx.blocklength,
-                           type->u.blkhindx.child, remoffset, &tmp_actual_unpack_bytes, info,
-                           request);
+        rc = yaksi_iacc_unpack(sbuf, rem_unpack_bytes, dbuf, type->u.blkhindx.blocklength,
+                               type->u.blkhindx.child, remoffset, &tmp_actual_unpack_bytes, op,
+                               info, request);
         YAKSU_ERR_CHECK(rc, fn_fail);
 
         sbuf += tmp_actual_unpack_bytes;
@@ -201,12 +201,12 @@ static int unpack_sub_blkhindx(const void *inbuf, uintptr_t insize, void *outbuf
 
 static int unpack_sub_hindexed(const void *inbuf, uintptr_t insize, void *outbuf,
                                yaksi_type_s * type, uintptr_t outoffset,
-                               uintptr_t * actual_unpack_bytes, yaksi_info_s * info,
+                               uintptr_t * actual_unpack_bytes, yaksa_op_t op, yaksi_info_s * info,
                                yaksi_request_s * request)
 {
     int rc = YAKSA_SUCCESS;
 
-    /* make sure we have something left to unpack after the offset */
+    /* make sure we have something left to acc_unpack after the offset */
     assert(outoffset < type->size);
 
     const char *sbuf = (const char *) inbuf;
@@ -244,9 +244,10 @@ static int unpack_sub_hindexed(const void *inbuf, uintptr_t insize, void *outbuf
         uintptr_t tmp_actual_unpack_bytes;
 
         dbuf = (char *) outbuf + type->u.hindexed.array_of_displs[blockid];
-        rc = yaksi_iunpack(sbuf, tmp_unpack_bytes, dbuf,
-                           type->u.hindexed.array_of_blocklengths[blockid], type->u.hindexed.child,
-                           remoffset, &tmp_actual_unpack_bytes, info, request);
+        rc = yaksi_iacc_unpack(sbuf, tmp_unpack_bytes, dbuf,
+                               type->u.hindexed.array_of_blocklengths[blockid],
+                               type->u.hindexed.child, remoffset, &tmp_actual_unpack_bytes, op,
+                               info, request);
         YAKSU_ERR_CHECK(rc, fn_fail);
         sbuf += tmp_actual_unpack_bytes;
 
@@ -254,7 +255,7 @@ static int unpack_sub_hindexed(const void *inbuf, uintptr_t insize, void *outbuf
         *actual_unpack_bytes += tmp_actual_unpack_bytes;
 
         if (rem_unpack_bytes == 0 || tmp_actual_unpack_bytes == 0) {
-            /* if we are out of unpack buffer space, return */
+            /* if we are out of acc_unpack buffer space, return */
             goto fn_exit;
         }
 
@@ -275,8 +276,8 @@ static int unpack_sub_hindexed(const void *inbuf, uintptr_t insize, void *outbuf
             break;
 
         dbuf = (char *) outbuf + type->u.hindexed.array_of_displs[blockid];
-        rc = yaksi_iunpack_backend(sbuf, dbuf, type->u.hindexed.array_of_blocklengths[blockid],
-                                   type->u.hindexed.child, info, request);
+        rc = yaksi_iacc_unpack_backend(sbuf, dbuf, type->u.hindexed.array_of_blocklengths[blockid],
+                                       type->u.hindexed.child, op, info, request);
         YAKSU_ERR_CHECK(rc, fn_fail);
         sbuf += bytes_in_block;
 
@@ -285,7 +286,7 @@ static int unpack_sub_hindexed(const void *inbuf, uintptr_t insize, void *outbuf
         blockid++;
 
         if (rem_unpack_bytes == 0) {
-            /* if we are out of unpack buffer space, return */
+            /* if we are out of acc_unpack buffer space, return */
             goto fn_exit;
         }
     }
@@ -302,9 +303,10 @@ static int unpack_sub_hindexed(const void *inbuf, uintptr_t insize, void *outbuf
         uintptr_t tmp_actual_unpack_bytes;
 
         dbuf = (char *) outbuf + type->u.hindexed.array_of_displs[blockid];
-        rc = yaksi_iunpack(sbuf, rem_unpack_bytes, dbuf,
-                           type->u.hindexed.array_of_blocklengths[blockid], type->u.hindexed.child,
-                           remoffset, &tmp_actual_unpack_bytes, info, request);
+        rc = yaksi_iacc_unpack(sbuf, rem_unpack_bytes, dbuf,
+                               type->u.hindexed.array_of_blocklengths[blockid],
+                               type->u.hindexed.child, remoffset, &tmp_actual_unpack_bytes, op,
+                               info, request);
         YAKSU_ERR_CHECK(rc, fn_fail);
 
         sbuf += tmp_actual_unpack_bytes;
@@ -321,11 +323,11 @@ static int unpack_sub_hindexed(const void *inbuf, uintptr_t insize, void *outbuf
 
 static int unpack_sub_struct(const void *inbuf, uintptr_t insize, void *outbuf, yaksi_type_s * type,
                              uintptr_t outoffset, uintptr_t * actual_unpack_bytes,
-                             yaksi_info_s * info, yaksi_request_s * request)
+                             yaksa_op_t op, yaksi_info_s * info, yaksi_request_s * request)
 {
     int rc = YAKSA_SUCCESS;
 
-    /* make sure we have something left to unpack after the offset */
+    /* make sure we have something left to acc_unpack after the offset */
     assert(outoffset < type->size);
 
     const char *sbuf = (const char *) inbuf;
@@ -363,10 +365,10 @@ static int unpack_sub_struct(const void *inbuf, uintptr_t insize, void *outbuf, 
         uintptr_t tmp_actual_unpack_bytes;
 
         dbuf = (char *) outbuf + type->u.str.array_of_displs[blockid];
-        rc = yaksi_iunpack(sbuf, tmp_unpack_bytes, dbuf,
-                           type->u.str.array_of_blocklengths[blockid],
-                           type->u.str.array_of_types[blockid], remoffset, &tmp_actual_unpack_bytes,
-                           info, request);
+        rc = yaksi_iacc_unpack(sbuf, tmp_unpack_bytes, dbuf,
+                               type->u.str.array_of_blocklengths[blockid],
+                               type->u.str.array_of_types[blockid], remoffset,
+                               &tmp_actual_unpack_bytes, op, info, request);
         YAKSU_ERR_CHECK(rc, fn_fail);
 
         sbuf += tmp_actual_unpack_bytes;
@@ -374,7 +376,7 @@ static int unpack_sub_struct(const void *inbuf, uintptr_t insize, void *outbuf, 
         *actual_unpack_bytes += tmp_actual_unpack_bytes;
 
         if (rem_unpack_bytes == 0 || tmp_actual_unpack_bytes == 0) {
-            /* if we are out of unpack buffer space, return */
+            /* if we are out of acc_unpack buffer space, return */
             goto fn_exit;
         }
 
@@ -395,8 +397,8 @@ static int unpack_sub_struct(const void *inbuf, uintptr_t insize, void *outbuf, 
             break;
 
         dbuf = (char *) outbuf + type->u.str.array_of_displs[blockid];
-        rc = yaksi_iunpack_backend(sbuf, dbuf, type->u.str.array_of_blocklengths[blockid],
-                                   type->u.str.array_of_types[blockid], info, request);
+        rc = yaksi_iacc_unpack_backend(sbuf, dbuf, type->u.str.array_of_blocklengths[blockid],
+                                       type->u.str.array_of_types[blockid], op, info, request);
         YAKSU_ERR_CHECK(rc, fn_fail);
         sbuf += bytes_in_block;
 
@@ -406,7 +408,7 @@ static int unpack_sub_struct(const void *inbuf, uintptr_t insize, void *outbuf, 
         blockid++;
 
         if (rem_unpack_bytes == 0) {
-            /* if we are out of unpack buffer space, return */
+            /* if we are out of acc_unpack buffer space, return */
             goto fn_exit;
         }
     }
@@ -423,10 +425,10 @@ static int unpack_sub_struct(const void *inbuf, uintptr_t insize, void *outbuf, 
         uintptr_t tmp_actual_unpack_bytes;
 
         dbuf = (char *) outbuf + type->u.str.array_of_displs[blockid];
-        rc = yaksi_iunpack(sbuf, rem_unpack_bytes, dbuf,
-                           type->u.str.array_of_blocklengths[blockid],
-                           type->u.str.array_of_types[blockid], remoffset, &tmp_actual_unpack_bytes,
-                           info, request);
+        rc = yaksi_iacc_unpack(sbuf, rem_unpack_bytes, dbuf,
+                               type->u.str.array_of_blocklengths[blockid],
+                               type->u.str.array_of_types[blockid], remoffset,
+                               &tmp_actual_unpack_bytes, op, info, request);
         YAKSU_ERR_CHECK(rc, fn_fail);
 
         sbuf += tmp_actual_unpack_bytes;
@@ -441,9 +443,10 @@ static int unpack_sub_struct(const void *inbuf, uintptr_t insize, void *outbuf, 
     goto fn_exit;
 }
 
-int yaksi_iunpack_element(const void *inbuf, uintptr_t insize, void *outbuf, yaksi_type_s * type,
-                          uintptr_t outoffset, uintptr_t * actual_unpack_bytes,
-                          yaksi_info_s * info, yaksi_request_s * request)
+int yaksi_iacc_unpack_element(const void *inbuf, uintptr_t insize, void *outbuf,
+                              yaksi_type_s * type, uintptr_t outoffset,
+                              uintptr_t * actual_unpack_bytes, yaksa_op_t op, yaksi_info_s * info,
+                              yaksi_request_s * request)
 {
     int rc = YAKSA_SUCCESS;
 
@@ -458,37 +461,38 @@ int yaksi_iunpack_element(const void *inbuf, uintptr_t insize, void *outbuf, yak
     switch (type->kind) {
         case YAKSI_TYPE_KIND__HVECTOR:
             rc = unpack_sub_hvector(inbuf, insize, outbuf, type, outoffset, actual_unpack_bytes,
-                                    info, request);
+                                    op, info, request);
             YAKSU_ERR_CHECK(rc, fn_fail);
             break;
 
         case YAKSI_TYPE_KIND__BLKHINDX:
             rc = unpack_sub_blkhindx(inbuf, insize, outbuf, type, outoffset, actual_unpack_bytes,
-                                     info, request);
+                                     op, info, request);
             YAKSU_ERR_CHECK(rc, fn_fail);
             break;
 
         case YAKSI_TYPE_KIND__HINDEXED:
             rc = unpack_sub_hindexed(inbuf, insize, outbuf, type, outoffset, actual_unpack_bytes,
-                                     info, request);
+                                     op, info, request);
             YAKSU_ERR_CHECK(rc, fn_fail);
             break;
 
         case YAKSI_TYPE_KIND__STRUCT:
             rc = unpack_sub_struct(inbuf, insize, outbuf, type, outoffset, actual_unpack_bytes,
-                                   info, request);
+                                   op, info, request);
             YAKSU_ERR_CHECK(rc, fn_fail);
             break;
 
         case YAKSI_TYPE_KIND__RESIZED:
-            rc = yaksi_iunpack_element(inbuf, insize, outbuf, type->u.resized.child, outoffset,
-                                       actual_unpack_bytes, info, request);
+            rc = yaksi_iacc_unpack_element(inbuf, insize, outbuf, type->u.resized.child, outoffset,
+                                           actual_unpack_bytes, op, info, request);
             YAKSU_ERR_CHECK(rc, fn_fail);
             break;
 
         case YAKSI_TYPE_KIND__CONTIG:
-            rc = yaksi_iunpack(inbuf, insize, outbuf, type->u.contig.count,
-                               type->u.contig.child, outoffset, actual_unpack_bytes, info, request);
+            rc = yaksi_iacc_unpack(inbuf, insize, outbuf, type->u.contig.count,
+                                   type->u.contig.child, outoffset, actual_unpack_bytes, op, info,
+                                   request);
             YAKSU_ERR_CHECK(rc, fn_fail);
             break;
 
@@ -496,8 +500,8 @@ int yaksi_iunpack_element(const void *inbuf, uintptr_t insize, void *outbuf, yak
             {
                 yaksi_type_s *primary = type->u.subarray.primary;
                 char *dbuf = (char *) outbuf + type->true_lb - primary->true_lb;
-                rc = yaksi_iunpack_element(inbuf, insize, dbuf, primary, outoffset,
-                                           actual_unpack_bytes, info, request);
+                rc = yaksi_iacc_unpack_element(inbuf, insize, dbuf, primary, outoffset,
+                                               actual_unpack_bytes, op, info, request);
                 YAKSU_ERR_CHECK(rc, fn_fail);
                 break;
             }

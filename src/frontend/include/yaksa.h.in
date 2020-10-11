@@ -117,6 +117,30 @@ typedef uint64_t yaksa_type_t;
 /*! @} */
 
 
+/*! \addtogroup yaksa-ops Yaksa Reduction Operations
+ * @{
+ */
+
+typedef uint64_t yaksa_op_t;
+
+/**
+ * \brief yaksa builtin reduction ops
+ */
+#define YAKSA_OP__MAX                                 ((yaksa_op_t) 0)
+#define YAKSA_OP__MIN                                 ((yaksa_op_t) 1)
+#define YAKSA_OP__SUM                                 ((yaksa_op_t) 2)
+#define YAKSA_OP__PROD                                ((yaksa_op_t) 3)
+#define YAKSA_OP__LAND                                ((yaksa_op_t) 4)
+#define YAKSA_OP__BAND                                ((yaksa_op_t) 5)
+#define YAKSA_OP__LOR                                 ((yaksa_op_t) 6)
+#define YAKSA_OP__BOR                                 ((yaksa_op_t) 7)
+#define YAKSA_OP__LXOR                                ((yaksa_op_t) 8)
+#define YAKSA_OP__BXOR                                ((yaksa_op_t) 9)
+#define YAKSA_OP__REPLACE                             ((yaksa_op_t) 10)
+
+/*! @} */
+
+
 /*! \addtogroup yaksa-requests Yaksa predefined datatypes
  * @{
  */
@@ -465,14 +489,34 @@ int yaksa_ipack(const void *inbuf, uintptr_t incount, yaksa_type_t type, uintptr
  * \param[in]  outcount          Number of elements of the datatype representing the layout
  * \param[in]  type              Datatype representing the layout
  * \param[in]  outoffset         Number of bytes to skip from the layout represented by the
- *                               (incount, type) tuple
+ *                               (outcount, type) tuple
  * \param[out] actual_unpack_bytes Actual number of bytes that were unpacked into the output buffer
+ * \param[in]  info              Info hint to apply
  * \param[out] request           Request handle associated with the operation
  *                               (YAKSA_REQUEST__NULL if the request already completed)
  */
 int yaksa_iunpack(const void *inbuf, uintptr_t insize, void *outbuf, uintptr_t outcount,
                   yaksa_type_t type, uintptr_t outoffset, uintptr_t * actual_unpack_bytes,
                   yaksa_info_t info, yaksa_request_t * request);
+
+/*!
+ * \brief accumulates the data in one buffer into another
+ *
+ * \param[in]  inbuf             Input buffer from which data is being accumulated
+ * \param[in]  insize            Number of bytes in the input buffer
+ * \param[out] outbuf            Output buffer into which data is being accumulated
+ * \param[in]  outcount          Number of elements of the datatype representing the layout
+ * \param[in]  type              Datatype representing the layout
+ * \param[in]  outoffset         Number of bytes to skip from the layout represented by the
+ *                               (outcount, type) tuple
+ * \param[in]  op                Reduction operation to apply
+ * \param[in]  info              Info hint to apply
+ * \param[out] request           Request handle associated with the operation
+ *                               (YAKSA_REQUEST__NULL if the request already completed)
+ */
+int yaksa_iacc(const void *inbuf, uintptr_t insize, void *outbuf, uintptr_t outcount,
+               yaksa_type_t type, uintptr_t outoffset, yaksa_op_t op, yaksa_info_t info,
+               yaksa_request_t * request);
 
 /*!
  * \brief gets the number of contiguous segments in the (count, type) tuple

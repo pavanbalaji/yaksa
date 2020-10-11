@@ -129,7 +129,7 @@ def generate_kernels(b, darray, blklen):
     if (darray[-1] != "hvector" and darray[-1] != "blkhindx" and blklen != "generic"):
         return
 
-    for func in "pack","unpack":
+    for func in "pack","acc_unpack":
         ##### figure out the function name to use
         s = "int yaksuri_seqi_%s_" % func
         for d in darray:
@@ -196,7 +196,7 @@ if __name__ == '__main__':
         print("===> ERROR: pup-max-nesting must be positive")
         sys.exit(1)
 
-    ##### generate the core pack/unpack kernels (single level)
+    ##### generate the core pack/acc_unpack kernels (single level)
     for b in builtin_types:
         for d in gencomm.derived_types:
             filename = "src/backend/seq/pup/yaksuri_seqi_pup_%s_%s.c" % (d, b.replace(" ","_"))
@@ -216,7 +216,7 @@ if __name__ == '__main__':
 
             OUTFILE.close()
 
-    ##### generate the core pack/unpack kernels (more than one level)
+    ##### generate the core pack/acc_unpack kernels (more than one level)
     darraylist = [ ]
     yutils.generate_darrays(gencomm.derived_types, darraylist, args.pup_max_nesting - 2)
     for b in builtin_types:
@@ -241,7 +241,7 @@ if __name__ == '__main__':
 
                 OUTFILE.close()
 
-    ##### generate the core pack/unpack kernel declarations
+    ##### generate the core pack/acc_unpack kernel declarations
     filename = "src/backend/seq/pup/yaksuri_seqi_pup.h"
     yutils.copyright_c(filename)
     OUTFILE = open(filename, "a")
@@ -268,7 +268,7 @@ if __name__ == '__main__':
                     and blklen != "generic"):
                     continue
 
-                for func in "pack","unpack":
+                for func in "pack","acc_unpack":
                     ##### figure out the function name to use
                     s = "int yaksuri_seqi_%s_" % func
                     for d in darray:

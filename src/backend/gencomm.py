@@ -44,14 +44,14 @@ def switcher_builtin_element(backend, OUTFILE, blklens, typelist, pupstr, key, v
                 yutils.display(OUTFILE, "default:\n")
             yutils.display(OUTFILE, "if (max_nesting_level >= %d) {\n" % nesting_level)
             yutils.display(OUTFILE, "%s->pack = yaksuri_%si_%s_blklen_%s_%s;\n" % (backend, backend, pupstr, blklen, val))
-            yutils.display(OUTFILE, "%s->unpack = yaksuri_%si_un%s_blklen_%s_%s;\n" % (backend, backend, pupstr, blklen, val))
+            yutils.display(OUTFILE, "%s->acc_unpack = yaksuri_%si_acc_un%s_blklen_%s_%s;\n" % (backend, backend, pupstr, blklen, val))
             yutils.display(OUTFILE, "}\n")
             yutils.display(OUTFILE, "break;\n")
         yutils.display(OUTFILE, "}\n")
     else:
         yutils.display(OUTFILE, "if (max_nesting_level >= %d) {\n" % nesting_level)
         yutils.display(OUTFILE, "%s->pack = yaksuri_%si_%s_%s;\n" % (backend, backend, pupstr, val))
-        yutils.display(OUTFILE, "%s->unpack = yaksuri_%si_un%s_%s;\n" % (backend, backend, pupstr, val))
+        yutils.display(OUTFILE, "%s->acc_unpack = yaksuri_%si_acc_un%s_%s;\n" % (backend, backend, pupstr, val))
         yutils.display(OUTFILE, "}\n")
 
     if (t != ""):
@@ -113,7 +113,7 @@ def populate_pupfns(pup_max_nesting, backend, blklens, builtin_types, builtin_ma
                    % (backend, backend, backend, backend))
     yutils.display(OUTFILE, "\n")
     yutils.display(OUTFILE, "%s->pack = NULL;\n" % backend)
-    yutils.display(OUTFILE, "%s->unpack = NULL;\n" % backend)
+    yutils.display(OUTFILE, "%s->acc_unpack = NULL;\n" % backend)
     yutils.display(OUTFILE, "\n")
     yutils.display(OUTFILE, "switch (type->kind) {\n")
     for dtype1 in derived_types:

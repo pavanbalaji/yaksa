@@ -35,8 +35,8 @@ extern "C" {
 typedef struct yaksuri_cudai_type_s {
     void (*pack) (const void *inbuf, void *outbuf, uintptr_t count, yaksuri_cudai_md_s * md,
                   int n_threads, int n_blocks_x, int n_blocks_y, int n_blocks_z, int device);
-    void (*unpack) (const void *inbuf, void *outbuf, uintptr_t count, yaksuri_cudai_md_s * md,
-                    int n_threads, int n_blocks_x, int n_blocks_y, int n_blocks_z, int device);
+    void (*acc_unpack) (const void *inbuf, void *outbuf, uintptr_t count, yaksuri_cudai_md_s * md,
+                        int n_threads, int n_blocks_x, int n_blocks_y, int n_blocks_z, int device);
     yaksuri_cudai_md_s *md;
     pthread_mutex_t mdmutex;
     uintptr_t num_elements;
@@ -69,8 +69,8 @@ int yaksuri_cudai_populate_pupfns(yaksi_type_s * type);
 
 int yaksuri_cudai_ipack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type,
                         void *gpu_tmpbuf, int device, yaksi_info_s * info, void **event);
-int yaksuri_cudai_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type,
-                          void *gpu_tmpbuf, int device, yaksi_info_s * info, void **event);
+int yaksuri_cudai_iacc_unpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type,
+                              void *gpu_tmpbuf, int device, yaksi_info_s * info, void **event);
 int yaksuri_cudai_pup_is_supported(yaksi_type_s * type, bool * is_supported);
 
 /* *INDENT-OFF* */

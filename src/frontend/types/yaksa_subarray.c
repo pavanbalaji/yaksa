@@ -25,7 +25,7 @@ int yaksi_type_create_subarray(int ndims, const int *array_of_sizes, const int *
 
     /* create a series of hvectors for the subarray, but store the lb
      * and ub separately.  this is because subarray allows the buffer
-     * to point to the lb for pack/unpack operations, but that's not
+     * to point to the lb for pack/acc_unpack operations, but that's not
      * true for hvectors (even when resized). */
 
     outtype->u.subarray.ndims = ndims;

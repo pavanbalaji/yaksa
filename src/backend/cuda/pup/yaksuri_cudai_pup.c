@@ -187,8 +187,8 @@ int yaksuri_cudai_ipack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_
     goto fn_exit;
 }
 
-int yaksuri_cudai_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type,
-                          void *gpu_tmpbuf, int target, yaksi_info_s * info, void **event)
+int yaksuri_cudai_iacc_unpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type,
+                              void *gpu_tmpbuf, int target, yaksi_info_s * info, void **event)
 {
     int rc = YAKSA_SUCCESS;
     yaksuri_cudai_type_s *cuda_type = (yaksuri_cudai_type_s *) type->backend.cuda.priv;
@@ -283,11 +283,11 @@ int yaksuri_cudai_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaks
             (inattr.type == cudaMemoryTypeManaged && outattr.type == cudaMemoryTypeDevice) ||
             (inattr.type == cudaMemoryTypeDevice && outattr.type == cudaMemoryTypeDevice &&
              inattr.device == outattr.device)) {
-            cuda_type->unpack(inbuf, outbuf, count, cuda_type->md, n_threads, n_blocks_x,
-                              n_blocks_y, n_blocks_z, target);
+            cuda_type->acc_unpack(inbuf, outbuf, count, cuda_type->md, n_threads, n_blocks_x,
+                                  n_blocks_y, n_blocks_z, target);
         } else if (inattr.type == cudaMemoryTypeDevice && outattr.type == cudaMemoryTypeManaged) {
-            cuda_type->unpack(inbuf, outbuf, count, cuda_type->md, n_threads, n_blocks_x,
-                              n_blocks_y, n_blocks_z, target);
+            cuda_type->acc_unpack(inbuf, outbuf, count, cuda_type->md, n_threads, n_blocks_x,
+                                  n_blocks_y, n_blocks_z, target);
         } else if ((inattr.type == cudaMemoryTypeDevice && inattr.device != outattr.device) ||
                    (inattr.type == cudaMemoryTypeHost)) {
             assert(outattr.type == cudaMemoryTypeDevice);
@@ -296,8 +296,8 @@ int yaksuri_cudai_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaks
                                    yaksuri_cudai_global.stream[target]);
             YAKSURI_CUDAI_CUDA_ERR_CHKANDJUMP(cerr, rc, fn_fail);
 
-            cuda_type->unpack(gpu_tmpbuf, outbuf, count, cuda_type->md, n_threads, n_blocks_x,
-                              n_blocks_y, n_blocks_z, target);
+            cuda_type->acc_unpack(gpu_tmpbuf, outbuf, count, cuda_type->md, n_threads, n_blocks_x,
+                                  n_blocks_y, n_blocks_z, target);
         } else {
             rc = YAKSA_ERR__INTERNAL;
             goto fn_fail;

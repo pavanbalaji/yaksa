@@ -22,8 +22,8 @@ int yaksur_info_keyval_append(yaksi_info_s * info, const char *key, const void *
 
 int yaksur_ipack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type,
                  yaksi_info_s * info, yaksi_request_s * request);
-int yaksur_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type,
-                   yaksi_info_s * info, yaksi_request_s * request);
+int yaksur_iacc_unpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type,
+                       yaksa_op_t op, yaksi_info_s * info, yaksi_request_s * request);
 int yaksur_request_test(yaksi_request_s * request);
 int yaksur_request_wait(yaksi_request_s * request);
 

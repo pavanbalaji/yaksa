@@ -92,8 +92,8 @@ int yaksuri_seq_ipack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_in
     goto fn_exit;
 }
 
-int yaksuri_seq_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_info_s * info,
-                        yaksi_type_s * type)
+int yaksuri_seq_iacc_unpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_info_s * info,
+                            yaksi_type_s * type)
 {
     int rc = YAKSA_SUCCESS;
     yaksuri_seqi_type_s *seq_type = (yaksuri_seqi_type_s *) type->backend.seq.priv;
@@ -147,8 +147,8 @@ int yaksuri_seq_iunpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_
         } else {
             rc = YAKSA_ERR__NOT_SUPPORTED;
         }
-    } else if (seq_type->unpack) {
-        rc = seq_type->unpack(inbuf, outbuf, count, type);
+    } else if (seq_type->acc_unpack) {
+        rc = seq_type->acc_unpack(inbuf, outbuf, count, type);
         YAKSU_ERR_CHECK(rc, fn_fail);
     } else {
         rc = YAKSA_ERR__NOT_SUPPORTED;

@@ -208,7 +208,7 @@ void *runtest(void *arg)
 
 
         /* pack from the source object to a temporary buffer and
-         * unpack into the destination object */
+         * acc_unpack into the destination object */
 
         /* figure out the lengths and offsets of each segment */
         uintptr_t type_size;
@@ -269,7 +269,7 @@ void *runtest(void *arg)
             }
         }
 
-        /* the actual pack/unpack loop */
+        /* the actual pack/acc_unpack loop */
         copy_content(sbuf_h, sbuf_d, sobj.DTP_bufsize, sbuf_memtype);
         copy_content(dbuf_h, dbuf_d, dobj.DTP_bufsize, dbuf_memtype);
 

@@ -78,7 +78,7 @@ void *runtest(void *arg)
         assert(rc == YAKSA_SUCCESS);
 
 
-        /* pack with the original type and unpack with the new type */
+        /* pack with the original type and acc_unpack with the new type */
         void *tbuf = malloc(ssize * sobj.DTP_type_count);
         assert(tbuf);
 

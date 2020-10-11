@@ -163,7 +163,7 @@ int yaksuri_cuda_init_hook(yaksur_gpudriver_info_s ** info)
     (*info)->get_num_devices = get_num_devices;
     (*info)->check_p2p_comm = check_p2p_comm;
     (*info)->ipack = yaksuri_cudai_ipack;
-    (*info)->iunpack = yaksuri_cudai_iunpack;
+    (*info)->iacc_unpack = yaksuri_cudai_iacc_unpack;
     (*info)->pup_is_supported = yaksuri_cudai_pup_is_supported;
     (*info)->host_malloc = cuda_host_malloc;
     (*info)->host_free = cuda_host_free;

@@ -51,8 +51,9 @@ typedef struct yaksur_gpudriver_info_s {
     int (*ipack) (const void *inbuf, void *outbuf, uintptr_t count,
                   struct yaksi_type_s * type, void *device_tmpbuf, int device,
                   struct yaksi_info_s * info, void **event);
-    int (*iunpack) (const void *inbuf, void *outbuf, uintptr_t count, struct yaksi_type_s * type,
-                    void *device_tmpbuf, int device, struct yaksi_info_s * info, void **event);
+    int (*iacc_unpack) (const void *inbuf, void *outbuf, uintptr_t count,
+                        struct yaksi_type_s * type, void *device_tmpbuf, int device,
+                        struct yaksi_info_s * info, void **event);
     int (*pup_is_supported) (struct yaksi_type_s * type, bool * is_supported);
 
     /* memory management */
