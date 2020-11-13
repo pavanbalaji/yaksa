@@ -11,6 +11,9 @@ import yutils
 ## loop through the derived and basic types to generate individual
 ## pack functions
 derived_types = [ "hvector", "blkhindx", "hindexed", "contig", "resized" ]
+type_map = { }
+type_ops = [["pack", "acc_unpack"], ["pack", "acc_unpack"], ["pack", "acc_unpack"], ["pack", "acc_unpack", "sum"], ["pack", "acc_unpack", "sum"], \
+        ["pack", "acc_unpack", "sum"], ["pack", "acc_unpack", "sum"], ["pack", "acc_unpack", "sum"], ["pack", "acc_unpack", "sum"], ["pack", "acc_unpack", "sum"]]
 
 
 ########################################################################################
@@ -24,6 +27,11 @@ def child_type_str(typelist):
 
 def switcher_builtin_element(backend, OUTFILE, blklens, typelist, pupstr, key, val):
     yutils.display(OUTFILE, "case %s:\n" % key.upper())
+    d = val
+    if (key == "YAKSA_TYPE__long_double"):
+        d = "long double";
+    n = int
+    n = type_map.get(d, "-1")
 
     if (len(typelist) == 0):
         t = ""
@@ -43,16 +51,28 @@ def switcher_builtin_element(backend, OUTFILE, blklens, typelist, pupstr, key, v
             else:
                 yutils.display(OUTFILE, "default:\n")
             yutils.display(OUTFILE, "if (max_nesting_level >= %d) {\n" % nesting_level)
-            yutils.display(OUTFILE, "%s->pack = yaksuri_%si_%s_blklen_%s_%s;\n" % (backend, backend, pupstr, blklen, val))
-            yutils.display(OUTFILE, "%s->acc_unpack = yaksuri_%si_acc_un%s_blklen_%s_%s;\n" % (backend, backend, pupstr, blklen, val))
+            for p in type_ops[n]:
+                if (backend != "seq" and p != "pack" and p!="acc_unpack"):
+                    continue
+                yutils.display(OUTFILE, "%s->%s = yaksuri_%si_%s%s_blklen_%s_%s;\n" % (backend, p, backend, p, pupstr, blklen, val))
+            #yutils.display(OUTFILE, "%s->acc_unpack = yaksuri_%si_acc_un%s_blklen_%s_%s;\n" % (backend, backend, pupstr, blklen, val))
             yutils.display(OUTFILE, "}\n")
             yutils.display(OUTFILE, "break;\n")
         yutils.display(OUTFILE, "}\n")
-    else:
+    elif (t != ""):
         yutils.display(OUTFILE, "if (max_nesting_level >= %d) {\n" % nesting_level)
-        yutils.display(OUTFILE, "%s->pack = yaksuri_%si_%s_%s;\n" % (backend, backend, pupstr, val))
-        yutils.display(OUTFILE, "%s->acc_unpack = yaksuri_%si_acc_un%s_%s;\n" % (backend, backend, pupstr, val))
+        for p in type_ops[n]:
+            if (backend != "seq" and p != "pack" and p!="acc_unpack"):
+                continue
+            yutils.display(OUTFILE, "%s->%s = yaksuri_%si_%s%s_%s;\n" % (backend, p, backend, p, pupstr, val))
+        #yutils.display(OUTFILE, "%s->acc_unpack = yaksuri_%si_acc_un%s_%s;\n" % (backend, backend, pupstr, val))
         yutils.display(OUTFILE, "}\n")
+    else:
+        for p in type_ops[n]:
+            if (p == "pack" or p ==  "acc_unpack"):
+                continue
+            yutils.display(OUTFILE, "%s->%s = yaksuri_%si_%s_%s;\n" % (backend, p, backend, p, val))
+        #yutils.display(OUTFILE, "}\n")
 
     if (t != ""):
         typelist.append(t)
@@ -97,6 +117,11 @@ def switcher(backend, OUTFILE, blklens, builtin_types, builtin_maps, typelist, p
 ########################################################################################
 def populate_pupfns(pup_max_nesting, backend, blklens, builtin_types, builtin_maps):
     ##### generate the switching logic to select pup functions
+    n = 0
+    for b in builtin_types:
+        type_map[b] = n
+        n = n + 1
+
     filename = "src/backend/%s/pup/yaksuri_%si_populate_pupfns.c" % (backend, backend)
     yutils.copyright_c(filename)
     OUTFILE = open(filename, "a")
@@ -133,6 +158,10 @@ def populate_pupfns(pup_max_nesting, backend, blklens, builtin_types, builtin_ma
         yutils.display(OUTFILE, "}\n")
         yutils.display(OUTFILE, "break;\n")
         yutils.display(OUTFILE, "\n")
+    yutils.display(OUTFILE, "case YAKSI_TYPE_KIND__BUILTIN:\n")
+    yutils.display(OUTFILE, "rc = yaksuri_%si_populate_pupfns_builtin(type);\n" % backend)
+    yutils.display(OUTFILE, "break;\n")
+    yutils.display(OUTFILE, "\n")
     yutils.display(OUTFILE, "default:\n")
     yutils.display(OUTFILE, "    break;\n")
     yutils.display(OUTFILE, "}\n")
@@ -170,7 +199,8 @@ def populate_pupfns(pup_max_nesting, backend, blklens, builtin_types, builtin_ma
             yutils.display(OUTFILE, "}\n")
             yutils.display(OUTFILE, "\n")
 
-            pupstr = "pack_%s_%s" % (dtype1, dtype2)
+            pupstr = "_%s_%s" % (dtype1, dtype2)
+
             typelist = [ dtype1, dtype2 ]
             switcher(backend, OUTFILE, blklens, builtin_types, builtin_maps, typelist, pupstr, pup_max_nesting - 1)
             yutils.display(OUTFILE, "\n")
@@ -205,13 +235,40 @@ def populate_pupfns(pup_max_nesting, backend, blklens, builtin_types, builtin_ma
         yutils.display(OUTFILE, "}\n")
         yutils.display(OUTFILE, "\n")
 
-        pupstr = "pack_%s" % dtype1
+        pupstr = "_%s" % dtype1
         typelist = [ dtype1 ]
         switcher_builtin(backend, OUTFILE, blklens, builtin_types, builtin_maps, typelist, pupstr)
         yutils.display(OUTFILE, "\n")
         yutils.display(OUTFILE, "return rc;\n")
         yutils.display(OUTFILE, "}\n")
         OUTFILE.close()
+
+    filename = "src/backend/%s/pup/yaksuri_%si_populate_pupfns_builtin.c" % (backend, backend)
+    yutils.copyright_c(filename)
+    OUTFILE = open(filename, "a")
+    yutils.display(OUTFILE, "#include <stdio.h>\n")
+    yutils.display(OUTFILE, "#include <stdlib.h>\n")
+    yutils.display(OUTFILE, "#include <wchar.h>\n")
+    yutils.display(OUTFILE, "#include \"yaksi.h\"\n")
+    yutils.display(OUTFILE, "#include \"yaksu.h\"\n")
+    yutils.display(OUTFILE, "#include \"yaksuri_%si.h\"\n" % backend)
+    yutils.display(OUTFILE, "#include \"yaksuri_%si_populate_pupfns.h\"\n" % backend)
+    yutils.display(OUTFILE, "#include \"yaksuri_%si_pup.h\"\n" % backend)
+    yutils.display(OUTFILE, "\n")
+    yutils.display(OUTFILE, "int yaksuri_%si_populate_pupfns_builtin(yaksi_type_s * type)\n" % backend)
+    yutils.display(OUTFILE, "{\n")
+    yutils.display(OUTFILE, "int rc = YAKSA_SUCCESS;\n")
+    yutils.display(OUTFILE, "yaksuri_%si_type_s *%s = (yaksuri_%si_type_s *) type->backend.%s.priv;\n" \
+                    % (backend, backend, backend, backend))
+    yutils.display(OUTFILE, "\n")
+
+    pupstr = ""
+    typelist = [ ]
+    switcher_builtin(backend, OUTFILE, blklens, builtin_types, builtin_maps, typelist, pupstr)
+    yutils.display(OUTFILE, "\n")
+    yutils.display(OUTFILE, "return rc;\n")
+    yutils.display(OUTFILE, "}\n")
+    OUTFILE.close()
 
     ##### generate the Makefile for the pup function selection functions
     filename = "src/backend/%s/pup/Makefile.populate_pupfns.mk" % backend
@@ -222,6 +279,7 @@ def populate_pupfns(pup_max_nesting, backend, blklens, builtin_types, builtin_ma
         for dtype2 in derived_types:
             yutils.display(OUTFILE, "\tsrc/backend/%s/pup/yaksuri_%si_populate_pupfns_%s_%s.c \\\n" % (backend, backend, dtype1, dtype2))
         yutils.display(OUTFILE, "\tsrc/backend/%s/pup/yaksuri_%si_populate_pupfns_%s_builtin.c \\\n" % (backend, backend, dtype1))
+    yutils.display(OUTFILE, "\tsrc/backend/%s/pup/yaksuri_%si_populate_pupfns_builtin.c \\\n" % (backend, backend))
     yutils.display(OUTFILE, "\tsrc/backend/%s/pup/yaksuri_%si_populate_pupfns.c\n" % (backend, backend))
     yutils.display(OUTFILE, "\n")
     yutils.display(OUTFILE, "noinst_HEADERS += \\\n")
@@ -239,6 +297,7 @@ def populate_pupfns(pup_max_nesting, backend, blklens, builtin_types, builtin_ma
         for dtype2 in derived_types:
             yutils.display(OUTFILE, "int yaksuri_%si_populate_pupfns_%s_%s(yaksi_type_s * type);\n" % (backend, dtype1, dtype2))
         yutils.display(OUTFILE, "int yaksuri_%si_populate_pupfns_%s_builtin(yaksi_type_s * type);\n" % (backend, dtype1))
+    yutils.display(OUTFILE, "int yaksuri_%si_populate_pupfns_builtin(yaksi_type_s * type);\n" % backend)
     yutils.display(OUTFILE, "\n")
     yutils.display(OUTFILE, "#endif  /* YAKSURI_%sI_POPULATE_PUPFNS_H_INCLUDED */\n" % backend.upper())
     OUTFILE.close()

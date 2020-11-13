@@ -8,10 +8,12 @@ EXTRA_DIST += $(top_srcdir)/test/simple/testlist.gen
 
 EXTRA_PROGRAMS += \
 	test/simple/simple_test \
+	test/simple/simple_test1 \
 	test/simple/threaded_test
 
 test_simple_simple_test_CPPFLAGS = $(test_cppflags)
 test_simple_threaded_test_CPPFLAGS = $(test_cppflags)
+test_simple_simple_test1_CPPFLAGS = $(test_cppflags)
 
 test-simple:
 	@$(top_srcdir)/test/runtests.py --summary=$(top_builddir)/test/simple/summary.junit.xml \

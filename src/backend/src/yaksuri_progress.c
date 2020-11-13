@@ -35,6 +35,7 @@ typedef struct progress_elem_s {
         void *outbuf;
         uintptr_t count;
         yaksi_type_s *type;
+	yaksa_op_t op;
 
         uintptr_t completed_count;
         uintptr_t issued_count;
@@ -85,7 +86,7 @@ static int progress_dequeue(progress_elem_s * elem)
 int yaksuri_progress_enqueue(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type,
                              yaksi_request_s * request, yaksur_ptr_attr_s inattr,
                              yaksur_ptr_attr_s outattr, yaksuri_puptype_e puptype,
-                             yaksi_info_s * info)
+                             yaksi_info_s * info, yaksa_op_t op)
 {
     int rc = YAKSA_SUCCESS;
 
@@ -108,6 +109,7 @@ int yaksuri_progress_enqueue(const void *inbuf, void *outbuf, uintptr_t count, y
     newelem->pup.outbuf = outbuf;
     newelem->pup.count = count;
     newelem->pup.type = type;
+    newelem->pup.op = op;
     newelem->pup.completed_count = 0;
     newelem->pup.issued_count = 0;
     newelem->pup.subop_head = newelem->pup.subop_tail = NULL;
@@ -460,7 +462,7 @@ int yaksuri_progress_poke(void)
                 char *dbuf =
                     (char *) elem->pup.outbuf + subop->count_offset * elem->pup.type->extent;
                 rc = yaksuri_seq_iacc_unpack(subop->host_tmpbuf, dbuf, subop->count, elem->info,
-                                             elem->pup.type);
+                                             elem->pup.type, elem->pup.op);
                 YAKSU_ERR_CHECK(rc, fn_fail);
             }
 
@@ -603,7 +605,7 @@ int yaksuri_progress_poke(void)
 
             rc = yaksuri_seq_iacc_unpack(sbuf, subop->host_tmpbuf,
                                          subop->count * elem->pup.type->size, elem->info,
-                                         byte_type);
+                                         byte_type, elem->pup.op);
             YAKSU_ERR_CHECK(rc, fn_fail);
 
             rc = yaksuri_global.gpudriver[id].info->iacc_unpack(subop->host_tmpbuf, dbuf,

@@ -116,12 +116,37 @@ def resized(suffix, b, blklen, last):
 ########################################################################################
 ##### Core kernels
 ########################################################################################
-def generate_kernels(b, darray, blklen):
+def generate_kernels(b, darray, blklen, op):
     global num_paren_open
     global s
 
     # we don't need pup kernels for basic types
     if (len(darray) == 0):
+        if (op == "pack" or op == "acc_unpack"):
+            return
+        s = "int yaksuri_seqi_%s_" % op + b.replace(" ", "_")
+        yutils.display(OUTFILE, "%s(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type)\n" % s),
+        yutils.display(OUTFILE, "{\n")	
+
+	##### variable declarations
+        # generic variables
+        yutils.display(OUTFILE, "int rc = YAKSA_SUCCESS;\n");
+        yutils.display(OUTFILE, "const %s *restrict sbuf = (const %s *) inbuf;\n" % (b, b));
+        yutils.display(OUTFILE, "%s *restrict dbuf = (%s *) outbuf;\n" % (b, b));
+        yutils.display(OUTFILE, "\n");
+        
+        yutils.display(OUTFILE, "for (int i = 0; i < count; i++) {\n")
+        num_paren_open += 1
+        if (op == "sum"):
+            yutils.display(OUTFILE, "dbuf[i] += sbuf[i];\n")
+            
+        for x in range(num_paren_open):
+            yutils.display(OUTFILE, "}\n")
+        num_paren_open = 0
+        yutils.display(OUTFILE, "\n");
+        yutils.display(OUTFILE, "return rc;\n")
+        yutils.display(OUTFILE, "}\n\n")
+	
         return
 
     # individual blocklength optimization is only for
@@ -129,7 +154,10 @@ def generate_kernels(b, darray, blklen):
     if (darray[-1] != "hvector" and darray[-1] != "blkhindx" and blklen != "generic"):
         return
 
-    for func in "pack","acc_unpack":
+    funclist = [ ]
+    funclist.append(op)
+
+    for func in funclist:
         ##### figure out the function name to use
         s = "int yaksuri_seqi_%s_" % func
         for d in darray:
@@ -172,8 +200,11 @@ def generate_kernels(b, darray, blklen):
 
         if (func == "pack"):
             yutils.display(OUTFILE, "dbuf[idx++] = sbuf[%s];\n" % s)
-        else:
+        elif (func == "acc_unpack"):
             yutils.display(OUTFILE, "dbuf[%s] = sbuf[idx++];\n" % s)
+        else:
+            yutils.display(OUTFILE, "dbuf[%s] += sbuf[idx++];\n" % s)
+                
         for x in range(num_paren_open):
             yutils.display(OUTFILE, "}\n")
         num_paren_open = 0
@@ -196,6 +227,27 @@ if __name__ == '__main__':
         print("===> ERROR: pup-max-nesting must be positive")
         sys.exit(1)
 
+    n = 0;
+    for b in builtin_types:
+        gencomm.type_map[b] = n;
+        n = n + 1;
+
+    ##### generate the reduction kernels for built-in types
+    for b in builtin_types:
+        filename = "src/backend/seq/pup/yaksuri_seqi_pup_%s.c" % (b.replace(" ","_"))
+        yutils.copyright_c(filename)
+        OUTFILE = open(filename, "a")
+        yutils.display(OUTFILE, "#include <string.h>\n")
+        yutils.display(OUTFILE, "#include <stdint.h>\n")
+        yutils.display(OUTFILE, "#include <wchar.h>\n")
+        yutils.display(OUTFILE, "#include \"yaksuri_seqi_pup.h\"\n")
+        yutils.display(OUTFILE, "\n")
+        for p in gencomm.type_ops[gencomm.type_map.get(b)]:
+            emptylist = [ ]
+            generate_kernels(b, emptylist, 0, p)
+            
+        OUTFILE.close()
+	
     ##### generate the core pack/acc_unpack kernels (single level)
     for b in builtin_types:
         for d in gencomm.derived_types:
@@ -207,13 +259,12 @@ if __name__ == '__main__':
             yutils.display(OUTFILE, "#include <wchar.h>\n")
             yutils.display(OUTFILE, "#include \"yaksuri_seqi_pup.h\"\n")
             yutils.display(OUTFILE, "\n")
-
-            emptylist = [ ]
-            emptylist.append(d)
-            for blklen in blklens:
-                generate_kernels(b, emptylist, blklen)
-            emptylist.pop()
-
+            for p in gencomm.type_ops[gencomm.type_map.get(b)]:
+                emptylist = [ ]
+                emptylist.append(d)
+                for blklen in blklens:
+                    generate_kernels(b, emptylist, blklen, p)
+                emptylist.pop()
             OUTFILE.close()
 
     ##### generate the core pack/acc_unpack kernels (more than one level)
@@ -230,18 +281,17 @@ if __name__ == '__main__':
                 yutils.display(OUTFILE, "#include <wchar.h>\n")
                 yutils.display(OUTFILE, "#include \"yaksuri_seqi_pup.h\"\n")
                 yutils.display(OUTFILE, "\n")
-
-                for darray in darraylist:
-                    darray.append(d1)
-                    darray.append(d2)
-                    for blklen in blklens:
-                        generate_kernels(b, darray, blklen)
-                    darray.pop()
-                    darray.pop()
-
+                for p in gencomm.type_ops[gencomm.type_map.get(b)]:
+                    for darray in darraylist:
+                        darray.append(d1)
+                        darray.append(d2)
+                        for blklen in blklens:
+                            generate_kernels(b, darray, blklen, p)
+                        darray.pop()
+                        darray.pop()
                 OUTFILE.close()
 
-    ##### generate the core pack/acc_unpack kernel declarations
+    ##### generate the core pack/acc_unpack and reduction kernel declarations
     filename = "src/backend/seq/pup/yaksuri_seqi_pup.h"
     yutils.copyright_c(filename)
     OUTFILE = open(filename, "a")
@@ -252,6 +302,14 @@ if __name__ == '__main__':
     yutils.display(OUTFILE, "#include <stdint.h>\n")
     yutils.display(OUTFILE, "#include \"yaksi.h\"\n")
     yutils.display(OUTFILE, "\n")
+
+    for b in builtin_types:
+        for p in gencomm.type_ops[gencomm.type_map.get(b)]:
+            if (p == "pack" or p == "acc_unpack"):
+                continue
+            s = "int yaksuri_seqi_%s_" % p + b.replace(" ", "_")
+            yutils.display(OUTFILE, "%s" % s),
+            yutils.display(OUTFILE, "(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s * type);\n")
 
     darraylist = [ ]
     yutils.generate_darrays(gencomm.derived_types, darraylist, args.pup_max_nesting)
@@ -268,9 +326,8 @@ if __name__ == '__main__':
                     and blklen != "generic"):
                     continue
 
-                for func in "pack","acc_unpack":
-                    ##### figure out the function name to use
-                    s = "int yaksuri_seqi_%s_" % func
+                for p in gencomm.type_ops[gencomm.type_map.get(b)]:
+                    s = "int yaksuri_seqi_%s_" % p
                     for d in darray:
                         s = s + "%s_" % d
                     # hvector and hindexed get blklen-specific function names
@@ -290,12 +347,16 @@ if __name__ == '__main__':
     OUTFILE = open(filename, "a")
     yutils.display(OUTFILE, "libyaksa_la_SOURCES += \\\n")
     for b in builtin_types:
+        #reduction kernels for built-in types
+        yutils.display(OUTFILE, "\tsrc/backend/seq/pup/yaksuri_seqi_pup_%s.c \\\n" % \
+                            (b.replace(" ","_")))
         for d1 in gencomm.derived_types:
+            #for p in type_ops[type_map.get(b)]:
             yutils.display(OUTFILE, "\tsrc/backend/seq/pup/yaksuri_seqi_pup_%s_%s.c \\\n" % \
-                           (d1, b.replace(" ","_")))
+                            (d1, b.replace(" ","_")))
             for d2 in gencomm.derived_types:
                 yutils.display(OUTFILE, "\tsrc/backend/seq/pup/yaksuri_seqi_pup_%s_%s_%s.c \\\n" % \
-                               (d1, d2, b.replace(" ","_")))
+                                (d1, d2, b.replace(" ","_")))
     yutils.display(OUTFILE, "\tsrc/backend/seq/pup/yaksuri_seq_pup.c\n")
     yutils.display(OUTFILE, "\n")
     yutils.display(OUTFILE, "noinst_HEADERS += \\\n")

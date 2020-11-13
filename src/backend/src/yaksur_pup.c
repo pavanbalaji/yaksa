@@ -176,7 +176,7 @@ int yaksur_ipack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_type_s 
         request_backend->kind = YAKSURI_REQUEST_KIND__STAGED;
 
         rc = yaksuri_progress_enqueue(inbuf, outbuf, count, type, request,
-                                      inattr, outattr, YAKSURI_PUPTYPE__PACK, info);
+                                      inattr, outattr, YAKSURI_PUPTYPE__PACK, info, YAKSA_OP__REPLACE);
         YAKSU_ERR_CHECK(rc, fn_fail);
 
         rc = yaksuri_progress_poke();
@@ -226,7 +226,7 @@ int yaksur_iacc_unpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_t
         if (!is_supported) {
             rc = YAKSA_ERR__NOT_SUPPORTED;
         } else {
-            rc = yaksuri_seq_iacc_unpack(inbuf, outbuf, count, info, type);
+            rc = yaksuri_seq_iacc_unpack(inbuf, outbuf, count, info, type, op);
             YAKSU_ERR_CHECK(rc, fn_fail);
         }
         goto fn_exit;
@@ -315,7 +315,7 @@ int yaksur_iacc_unpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_t
         request_backend->kind = YAKSURI_REQUEST_KIND__STAGED;
 
         rc = yaksuri_progress_enqueue(inbuf, outbuf, count, type, request,
-                                      inattr, outattr, YAKSURI_PUPTYPE__UNPACK, info);
+                                      inattr, outattr, YAKSURI_PUPTYPE__UNPACK, info, op);
         YAKSU_ERR_CHECK(rc, fn_fail);
 
         rc = yaksuri_progress_poke();

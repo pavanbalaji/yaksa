@@ -19,6 +19,6 @@ int yaksuri_seq_pup_is_supported(yaksi_type_s * type, bool * is_supported);
 int yaksuri_seq_ipack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_info_s * info,
                       yaksi_type_s * type);
 int yaksuri_seq_iacc_unpack(const void *inbuf, void *outbuf, uintptr_t count, yaksi_info_s * info,
-                            yaksi_type_s * type);
+                            yaksi_type_s * type, yaksa_op_t op);
 
 #endif /* YAKSURI_SEQ_H_INCLUDED */
