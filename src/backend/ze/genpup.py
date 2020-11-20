@@ -117,16 +117,25 @@ def resized(suffix, dtp, b, last):
 ########################################################################################
 ##### Core kernels
 ########################################################################################
-def generate_kernels(b, darray):
+def generate_kernels(b, darray, op):
     global need_extent
     global s
     global idx
 
     # we don't need pup kernels for basic types
-    if (len(darray) == 0):
-        return
+    #if (len(darray) == 0):
+     #   return
 
-    for func in "pack","unpack":
+    funclist = [ ]
+    if (op == 'REPLACE'):
+        funclist.append("pack")
+        funclist.append("unpack")
+    else:
+        funclist.append("pack_%s" % op.lower())
+        funclist.append("unpack_%s" % op.lower())
+
+
+    for func in funclist:
         ##### figure out the function name to use
         funcprefix = "%s_" % func
         for d in darray:
@@ -138,10 +147,11 @@ def generate_kernels(b, darray):
         yutils.display(OUTFILE, "{\n")
         yutils.display(OUTFILE, "__global const char *__restrict__ sbuf = (__global char *) inbuf;\n");
         yutils.display(OUTFILE, "__global char *__restrict__ dbuf = (__global char *) outbuf;\n")
-        if func == "pack":
-            yutils.display(OUTFILE, "sbuf = (__global const char *) ((__global char *)sbuf - md->true_lb);\n");
-        else:
+        #if func == "pack":
+        if "unpack" in func:
             yutils.display(OUTFILE, "dbuf = dbuf - md->true_lb;\n");
+        else:
+            yutils.display(OUTFILE, "sbuf = (__global const char *) ((__global char *)sbuf - md->true_lb);\n");
         yutils.display(OUTFILE, "uintptr_t extent = md->extent;\n")
         yutils.display(OUTFILE, "uintptr_t idx = get_global_id(0);\n")
         yutils.display(OUTFILE, "uintptr_t res = idx;\n")
@@ -208,9 +218,58 @@ def generate_kernels(b, darray):
         if (func == "pack"):
             yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + idx * sizeof(%s))) = *((const %s *) (const void *) (sbuf + %s));\n"
                                        % (b, b, b, s))
-        else:
+        elif (func == "pack_sum"):
+            yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + idx * sizeof(%s))) += *((const %s *) (const void *) (sbuf + %s));\n"
+                                       % (b, b, b, s))
+        elif (func == "pack_prod"):
+            yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + idx * sizeof(%s))) *= *((const %s *) (const void *) (sbuf + %s));\n"
+                                       % (b, b, b, s))
+        elif (func == "pack_bor"):
+            yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + idx * sizeof(%s))) |= *((const %s *) (const void *) (sbuf + %s));\n"
+                                       % (b, b, b, s))
+        elif (func == "pack_band"):
+            yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + idx * sizeof(%s))) &= *((const %s *) (const void *) (sbuf + %s));\n"
+                                       % (b, b, b, s))
+        elif (func == "pack_bxor"):
+            yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + idx * sizeof(%s))) ^= *((const %s *) (const void *) (sbuf + %s));\n"
+                                       % (b, b, b, s))
+        elif (func == "pack_lor"):
+            yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + idx * sizeof(%s))) ||= *((const %s *) (const void *) (sbuf + %s));\n"
+                                       % (b, b, b, s))
+        elif (func == "pack_land"):
+            yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + idx * sizeof(%s))) &&= *((const %s *) (const void *) (sbuf + %s));\n"
+                                       % (b, b, b, s))
+        elif (func == "pack_lxor"):
+            yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + idx * sizeof(%s))) ^^= *((const %s *) (const void *) (sbuf + %s));\n"
+                                        % (b, b, b, s))
+        elif (func == "unpack"):
             yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + %s)) = *((const %s *) (const void *) (sbuf + idx * sizeof(%s)));\n"
                                        % (b, s, b, b))
+        elif (func == "unpack_sum"):
+            yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + %s)) += *((const %s *) (const void *) (sbuf + idx * sizeof(%s)));\n"
+                                       % (b, s, b, b))
+        elif (func == "unpack_prod"):
+            yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + %s)) *= *((const %s *) (const void *) (sbuf + idx * sizeof(%s)));\n"
+                                       % (b, s, b, b))
+        elif (func == "unpack_bor"):
+            yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + %s)) |= *((const %s *) (const void *) (sbuf + idx * sizeof(%s)));\n"
+                                       % (b, s, b, b))
+        elif (func == "unpack_band"):
+            yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + %s)) &= *((const %s *) (const void *) (sbuf + idx * sizeof(%s)));\n"
+                                       % (b, s, b, b))
+        elif (func == "unpack_bxor"):
+            yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + %s)) ^= *((const %s *) (const void *) (sbuf + idx * sizeof(%s)));\n"
+                                       % (b, s, b, b))
+        elif (func == "unpack_lor"):
+            yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + %s)) ||= *((const %s *) (const void *) (sbuf + idx * sizeof(%s)));\n"
+                                       % (b, s, b, b))
+        elif (func == "unpack_land"):
+            yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + %s)) &&= *((const %s *) (const void *) (sbuf + idx * sizeof(%s)));\n"
+                                       % (b, s, b, b))
+        elif (func == "unpack_lxor"):
+            yutils.display(OUTFILE, "*((%s *) (void *) (dbuf + %s)) ^^= *((const %s *) (const void *) (sbuf + idx * sizeof(%s)));\n"
+                                       % (b, s, b, b))
+
 
         yutils.display(OUTFILE, "}\n\n")
 
@@ -229,7 +288,16 @@ def write_headers():
 
 def generate_define_kernels(b, darray):
     global k
-    for func in "pack","unpack":
+    funclist = []
+    for op in gencomm.type_ops[b]:
+        if (op == 'REPLACE'):
+            funclist.append("pack")
+            funclist.append("unpack")
+        else:
+            funclist.append("pack_%s" % op.lower())
+            funclist.append("unpack_%s" % op.lower())
+
+    for func in funclist:
         ##### figure out the function name to use
         s = "yaksuri_zei_%s_" % func
         for d in darray:
@@ -257,6 +325,18 @@ if __name__ == '__main__':
     yutils.generate_darrays(gencomm.derived_types, darraylist, args.pup_max_nesting - 2)
 
     for b in builtin_types:
+        filename = "src/backend/ze/pup/yaksuri_zei_pup_%s.cl" % b.replace(" ","_")
+        yutils.copyright_c(filename)
+        OUTFILE = open(filename, "a")
+        write_headers()
+
+        emptylist = [ ]
+        for op in gencomm.type_ops[b]:
+            generate_kernels(b, emptylist, op)
+
+        OUTFILE.close()
+
+    for b in builtin_types:
         for d1 in gencomm.derived_types:
             ##### generate the core pack/unpack kernels (single level)
             filename = "src/backend/ze/pup/yaksuri_zei_pup_%s_%s.cl" % (d1, b.replace(" ","_"))
@@ -266,7 +346,8 @@ if __name__ == '__main__':
 
             emptylist = [ ]
             emptylist.append(d1)
-            generate_kernels(b, emptylist)
+            for op in gencomm.type_ops[b]:
+                generate_kernels(b, emptylist, op)
             emptylist.pop()
             OUTFILE.close()
 
@@ -280,7 +361,8 @@ if __name__ == '__main__':
                 for darray in darraylist:
                     darray.append(d1)
                     darray.append(d2)
-                    generate_kernels(b, darray)
+                    for op in gencomm.type_ops[b]:
+                        generate_kernels(b, darray, op)
                     darray.pop()
                     darray.pop()
 
@@ -297,6 +379,9 @@ if __name__ == '__main__':
 
     num_modules = 0
     for b in builtin_types:
+        OUTFILE.write("extern const unsigned char yaksuri_zei_pup_%s_str[];\n" % b.replace(" ", "_"))
+        OUTFILE.write("extern const size_t yaksuri_zei_pup_%s_size;\n" % b.replace(" ", "_"))
+        num_modules += 1
         for d1 in gencomm.derived_types:
             ##### generate the core pack/unpack kernels (single level)
             OUTFILE.write("extern const unsigned char yaksuri_zei_pup_%s_%s_str[];\n" % (d1, b.replace(" ", "_")))
@@ -313,13 +398,14 @@ if __name__ == '__main__':
 
     num_kernels = 0
     for b in builtin_types:
+        num_kernels += 98
         for d1 in gencomm.derived_types:
-            num_kernels += 2
+            num_kernels += 98
 
             ##### generate the core pack/unpack kernels (more than one level)
             for d2 in gencomm.derived_types:
                 for darray in darraylist:
-                    num_kernels += 2
+                    num_kernels += 98
     OUTFILE.write("ze_kernel_handle_t *yaksuri_ze_kernels[%d];\n\n" % num_kernels)
 
     OUTFILE.write("const unsigned char * yaksuri_zei_pup_str[%d];\n" % num_modules)
@@ -334,6 +420,9 @@ if __name__ == '__main__':
 
     i = 0
     for b in builtin_types:
+        OUTFILE.write("    yaksuri_zei_pup_str[%d] = yaksuri_zei_pup_%s_str;\n" % (i, b.replace(" ", "_")))
+        OUTFILE.write("    yaksuri_zei_pup_size[%d] = yaksuri_zei_pup_%s_size;\n" % (i, b.replace(" ", "_")))
+        i += 1
         for d1 in gencomm.derived_types:
             OUTFILE.write("    yaksuri_zei_pup_str[%d] = yaksuri_zei_pup_%s_%s_str;\n" % (i, d1, b.replace(" ", "_")))
             OUTFILE.write("    yaksuri_zei_pup_size[%d] = yaksuri_zei_pup_%s_%s_size;\n" % (i, d1, b.replace(" ", "_")))
@@ -348,10 +437,24 @@ if __name__ == '__main__':
     i = 0
     m = 0
     for b in builtin_types:
+        for op in gencomm.type_ops[b]:
+            if (op == 'REPLACE'):
+                OUTFILE.write("    yaksuri_zei_kernel_funcs[%d] = \"yaksuri_zei_kernel_pack_%s\";\n" % (i, b.replace(" ", "_")))
+                OUTFILE.write("    yaksuri_zei_kernel_funcs[%d] = \"yaksuri_zei_kernel_unpack_%s\";\n" % (i, b.replace(" ", "_")))
+            else:
+                OUTFILE.write("    yaksuri_zei_kernel_funcs[%d] = \"yaksuri_zei_kernel_pack_%s_%s\";\n" % (i, op.lower(), b.replace(" ", "_")))
+                OUTFILE.write("    yaksuri_zei_kernel_funcs[%d] = \"yaksuri_zei_kernel_unpack_%s_%s\";\n" % (i, op.lower(), b.replace(" ", "_")))
+            OUTFILE.write("    yaksuri_zei_kernel_module_map[%d] = %d;\n" % (i, m))
+            i += 1
+        m += 1
         for d1 in gencomm.derived_types:
-            for func in "pack","unpack":
-                func_name = "yaksuri_zei_kernel_%s_%s_%s" % (func, d1, b.replace(" ", "_"))
-                OUTFILE.write("    yaksuri_zei_kernel_funcs[%d] = \"%s\";\n" % (i, func_name))
+            for op in gencomm.type_ops[b]:
+                if (op == 'REPLACE'):
+                    OUTFILE.write("    yaksuri_zei_kernel_funcs[%d] = \"yaksuri_zei_kernel_pack_%s_%s\";\n" % (i, d1, b.replace(" ", "_")))
+                    OUTFILE.write("    yaksuri_zei_kernel_funcs[%d] = \"yaksuri_zei_kernel_unpack_%s_%s\";\n" % (i, d1, b.replace(" ", "_")))
+                else:
+                    OUTFILE.write("    yaksuri_zei_kernel_funcs[%d] = \"yaksuri_zei_kernel_pack_%s_%s_%s\";\n" % (i, op.lower(), d1, b.replace(" ", "_")))
+                    OUTFILE.write("    yaksuri_zei_kernel_funcs[%d] = \"yaksuri_zei_kernel_unpack_%s_%s_%s\";\n" % (i, op.lower(), d1, b.replace(" ", "_")))
                 OUTFILE.write("    yaksuri_zei_kernel_module_map[%d] = %d;\n" % (i, m))
                 i += 1
             m += 1
@@ -360,14 +463,18 @@ if __name__ == '__main__':
                 for darray in darraylist:
                     darray.append(d1)
                     darray.append(d2)
-                    for func in "pack","unpack":
-                        func_name = "yaksuri_zei_kernel_%s_" % func
-                        for d in darray:
-                            func_name = func_name + "%s_" % d
-                        func_name = func_name + b.replace(" ", "_")
-                        OUTFILE.write("    yaksuri_zei_kernel_funcs[%d] = \"%s\";\n" % (i, func_name))
-                        OUTFILE.write("    yaksuri_zei_kernel_module_map[%d] = %d;\n" % (i, m))
-                        i += 1
+                    for op in gencomm.type_ops[b]:
+                        for func in "pack","unpack":
+                            if (op == 'REPLACE'):
+                                func_name = "yaksuri_zei_kernel_%s_" % func
+                            else:
+                                func_name = "yaksuri_zei_kernel_%s_%s_" % (func, op.lower())
+                            for d in darray:
+                                func_name = func_name + "%s_" % d
+                            func_name = func_name + b.replace(" ", "_")
+                            OUTFILE.write("    yaksuri_zei_kernel_funcs[%d] = \"%s\";\n" % (i, func_name))
+                            OUTFILE.write("    yaksuri_zei_kernel_module_map[%d] = %d;\n" % (i, m))
+                            i += 1
                     darray.pop()
                     darray.pop()
                 m += 1
@@ -430,6 +537,8 @@ if __name__ == '__main__':
     # reuse the gencomm module
     k = 0
     for b in builtin_types:
+        emptylist = [ ]
+        generate_define_kernels(b, emptylist)
         for d1 in gencomm.derived_types:
             emptylist = [ ]
             emptylist.append(d1)
@@ -452,6 +561,7 @@ if __name__ == '__main__':
     OUTFILE = open(filename, "a")
     yutils.display(OUTFILE, "libyaksa_la_SOURCES += \\\n")
     for b in builtin_types:
+        yutils.display(OUTFILE, "\tsrc/backend/ze/pup/yaksuri_zei_pup_%s.c \\\n" % b.replace(" ","_"))
         for d1 in gencomm.derived_types:
             yutils.display(OUTFILE, "\tsrc/backend/ze/pup/yaksuri_zei_pup_%s_%s.c \\\n" % (d1, b.replace(" ","_")))
             for d2 in gencomm.derived_types:
